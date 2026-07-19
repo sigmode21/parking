@@ -1,0 +1,7 @@
+# GitHub Pages 公開用リポジトリ
+# index.html（アプリ本体）以外はすべて追跡対象から除外し、
+# 内部ファイル（プロンプト・指示書・サンプルDXF・backup 等）の誤公開を防ぐ。
+/*
+!.gitignore
+!README.md
+!index.html

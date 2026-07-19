@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>駐車場自動配置ツール（検討用）</title>
+<style>
+:root{
+  --bg:#14181d; --panel:#1c2127; --panel2:#22282f; --line:#313a44;
+  --ink:#d7dee5; --ink-dim:#8b98a5; --ink-faint:#5c6873;
+  --cyan:#7fd1e8; --amber:#ffc857; --green:#7dbb8a; --red:#e07a6b;
+  --mono:"SFMono-Regular",Consolas,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);
+  font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+  font-size:13px;display:flex;flex-direction:column;overflow:hidden}
+#app{flex:1;display:flex;min-height:0}
+#side{width:300px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+  overflow-y:auto;padding:12px 14px 24px}
+.sideHead{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px}
+.appTitle{font-size:15px;font-weight:700;letter-spacing:.04em}
+.sec{margin-bottom:15px}
+.sec h2{font-size:11px;font-weight:600;letter-spacing:.12em;color:var(--ink-dim);
+  border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:8px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row label{flex:1;color:var(--ink);font-size:12px}
+.row .unit{color:var(--ink-faint);font-size:11px;width:24px}
+input[type=number],select,textarea{background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:4px;padding:4px 6px;font-family:var(--mono);font-size:12px}
+input[type=number]{width:64px;text-align:right}
+input[type=number]:focus,select:focus,textarea:focus{outline:1px solid var(--cyan);border-color:var(--cyan)}
+select{padding:4px}
+input[type=checkbox],input[type=radio]{accent-color:var(--amber)}
+input[type=range]{width:100%;accent-color:var(--amber)}
+.btnrow{display:flex;gap:6px;flex-wrap:wrap}
+button{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+  padding:5px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;
+  transition:border-color .12s,background .12s}
+button:hover{border-color:var(--cyan);color:var(--cyan)}
+button.active{border-color:var(--amber);color:var(--amber);background:#2a2416}
+button.primary{border-color:var(--amber);color:#141005;background:var(--amber);font-weight:600;width:100%;padding:8px}
+button.primary:hover{background:#ffd47a}
+button:disabled{opacity:.4;cursor:default}
+button.danger{background:#2a1618;border:1px solid #5a3630;color:#e07a6b;font-weight:600;width:100%;padding:9px;font-size:13px}
+button.danger:hover{background:#3a1e20;border-color:#e07a6b;color:#ff9a8a}
+.dangerSec{border:1px solid #5a3630;border-radius:6px;padding:10px;background:#1a1416}
+.hint{color:var(--ink-faint);font-size:10.5px;line-height:1.55;margin-top:4px}
+.note{color:var(--ink-faint);font-size:10.5px;line-height:1.6;border-top:1px solid var(--line);padding-top:8px}
+.modeTabs{display:flex;gap:0;margin-bottom:8px;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.modeTabs button{flex:1;border:none;border-radius:0;padding:7px 4px}
+.modeTabs button.active{background:#2a2416}
+#stage{flex:1;position:relative;min-width:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+#cv.mode-edit{cursor:default}
+#toolbar{position:absolute;top:10px;left:10px;display:flex;align-items:center;gap:6px;
+  background:rgba(28,33,39,.9);padding:6px;border-radius:6px;border:1px solid var(--line)}
+.tbDrawSel{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.tbDrawSel.active{border-color:var(--amber)}
+.tbDrawLbl{display:flex;align-items:center;padding:0 8px;font-size:12px;color:var(--ink-dim);
+  background:var(--panel2);border-right:1px solid var(--line)}
+.tbDrawSel.active .tbDrawLbl{color:#141005;background:var(--amber);font-weight:600;border-right-color:var(--amber)}
+.tbDrawSel select{border:none;border-radius:0;background:transparent;padding:5px 22px 5px 8px;
+  font-family:inherit;font-size:12px;color:var(--ink);cursor:pointer}
+.tbDrawSel.active select{color:var(--amber);font-weight:600}
+.tbDrawSel select:focus{outline:none}
+.tbDrawSel select option{background:var(--panel2);color:var(--ink);font-weight:400}
+#mEdit.active{background:var(--amber);color:#141005;border-color:var(--amber)}
+#mEdit.active:hover{background:#ffd47a;color:#141005}
+.tbSep{width:1px;background:var(--line);align-self:stretch;margin:0 2px}
+.tbOp{color:var(--ink-dim);font-size:12px}
+.tbOp:hover{color:var(--cyan);border-color:var(--cyan)}
+#msg{position:absolute;bottom:10px;left:10px;right:auto;max-width:70%;font-size:11.5px;color:var(--ink-dim);
+  background:rgba(20,24,29,.9);padding:5px 10px;border-radius:4px;pointer-events:none}
+#msgMode{color:var(--amber);font-weight:700;margin-right:6px}
+#msgMode:empty{margin-right:0}
+#warn{position:absolute;top:10px;right:10px;font-size:11.5px;color:var(--red);
+  background:rgba(20,24,29,.9);padding:5px 10px;border-radius:4px;display:none;border:1px solid #5a3630}
+#results{width:238px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+  overflow-y:auto;padding:12px 14px}
+.kpi{margin-bottom:12px}
+.kpi .num{font-family:var(--mono);font-size:34px;color:var(--amber);line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .lbl{font-size:11px;color:var(--ink-dim);letter-spacing:.08em}
+.kpi .num .numUnit{font-size:17px;color:var(--ink-dim);margin-left:3px}
+table.stats{width:100%;border-collapse:collapse;margin-bottom:12px}
+table.stats td{padding:3px 0;font-size:12px;border-bottom:1px dashed #2a323b}
+table.stats td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+table.stats td:first-child{color:var(--ink-dim)}
+.alt{border:1px solid var(--line);border-radius:5px;padding:6px 9px;margin-bottom:6px;cursor:pointer}
+.alt:hover{border-color:var(--cyan)}
+.alt.sel{border-color:var(--amber)}
+.alt .c{font-family:var(--mono);font-size:15px}
+.alt .d{font-size:11px;color:var(--ink-dim);font-family:var(--mono)}
+#layerList{max-height:130px;overflow-y:auto;font-size:11px}
+#layerList .row{margin-bottom:2px}
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:16px;width:380px}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog textarea{width:100%;height:170px;margin:8px 0}
+dialog h3{font-size:13px;margin-bottom:4px}
+h2.rh{font-size:11px;letter-spacing:.12em;color:var(--ink-dim);border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="app">
+<!-- ================= 左パネル ================= -->
+<aside id="side">
+  <div class="sideHead">
+    <h1 class="appTitle">駐車場自動配置ツール（検討用）</h1>
+  </div>
+  <div class="sec">
+    <h2>下図（DXF）</h2>
+    <div class="btnrow" style="margin-bottom:6px">
+      <button id="btnDxfLoad">DXF読込</button>
+      <button id="btnCalib" disabled>2点校正</button>
+      <button id="btnDxfClear" disabled>クリア</button>
+      <input type="file" id="fileDxf" accept=".dxf" style="display:none">
+    </div>
+    <div class="row"><input type="checkbox" id="uVisible" checked disabled>
+      <label for="uVisible" style="flex:1">下図を表示</label></div>
+    <div class="row"><label>濃度</label><input type="range" id="uOpacity" min="10" max="100" value="55" style="width:120px" disabled></div>
+    <div class="row"><label>図面単位</label>
+      <select id="uUnit" style="width:90px" disabled>
+        <option value="0.001">mm</option><option value="0.01">cm</option>
+        <option value="1">m</option><option value="0.0254">inch</option>
+      </select></div>
+    <div id="layerList"></div>
+    <p class="hint">ASCII DXF（AutoCAD: 名前を付けて保存→DXF）。DWG・バイナリDXFは非対応。図面はブラウザ内のみで処理されます。</p>
+  </div>
+
+  <div class="sec dangerSec">
+    <button class="danger" id="btnClear">全消去（敷地・障害物・車路・下図）</button>
+  </div>
+
+  <div class="sec">
+    <h2>車室</h2>
+    <div class="row"><label>車室幅</label><input type="number" id="pW" value="2.5" step="0.1" min="1.5"><span class="unit">m</span></div>
+    <div class="row"><label>車室奥行</label><input type="number" id="pD" value="5.0" step="0.1" min="3.0"><span class="unit">m</span></div>
+    <div class="row"><label>駐車角度</label>
+      <select id="pAngle" style="width:92px">
+        <option value="90">90°直角</option><option value="60">60°斜め</option><option value="45">45°斜め</option>
+      </select></div>
+  </div>
+
+  <div class="sec" id="secAisleA">
+    <h2>車路（自動帯）</h2>
+    <div class="row"><label>車路幅</label><input type="number" id="pAisle" value="6.0" step="0.1" min="2.5"><span class="unit">m</span></div>
+    <div class="row"><label>外周部の扱い</label>
+      <select id="pPerimeter" style="width:110px">
+        <option value="ring">外周車路</option>
+        <option value="stall" selected>外周車室</option>
+        <option value="none">なし</option>
+      </select></div>
+    <p class="hint">「外周車室」は敷地境界沿いに車室を外向きに並べ、その内側に周回車路を確保します。</p>
+  </div>
+
+  <div class="sec" id="secAisleM">
+    <h2>手動車路</h2>
+    <div class="row"><label>幅員</label><input type="number" id="pAisleM" value="6.0" step="0.1" min="2.5"><span class="unit">m</span></div>
+    <p class="hint">作図する手動車路の幅員。選択モードで手動車路を選ぶと、その車路の幅員がここに表示され、値を変更すると図に反映されます。</p>
+  </div>
+
+  <div class="sec">
+    <h2>外周緑化帯</h2>
+    <div class="row"><label>緑化幅（0で無効）</label><input type="number" id="pGreen" value="1.0" step="0.1" min="0"><span class="unit">m</span></div>
+    <p class="hint">敷地境界の内側全周に自動生成。手動車路が横断する部分は自動で切り欠かれます。</p>
+  </div>
+
+  <div class="sec" id="secDir">
+    <h2>配置方向</h2>
+    <div class="row"><input type="checkbox" id="pAutoDir" checked>
+      <label for="pAutoDir" style="flex:1">自動最適化</label></div>
+    <input type="range" id="pDirSlider" min="0" max="179" value="0" step="1" disabled>
+    <div class="row" style="margin-top:4px"><label>角度</label>
+      <input type="number" id="pDir" value="0" step="1" min="0" max="179" disabled><span class="unit">°</span></div>
+    <p class="hint">自動最適化を外すとスライダーで任意角度に変更でき、図・台数がリアルタイムに追従します。</p>
+  </div>
+
+  <button class="primary" id="btnRun">レイアウト生成</button>
+
+  <div class="sec" style="margin-top:13px">
+    <h2>書き出し</h2>
+    <div class="row"><label>DXF単位</label>
+      <select id="pExpUnit" style="width:80px"><option value="1000">mm</option><option value="1">m</option></select></div>
+    <div class="btnrow">
+      <button id="btnDxf">DXF</button><button id="btnPng">PNG</button>
+      <button id="btnSave">保存</button><button id="btnLoad">読込</button>
+      <input type="file" id="fileJson" accept=".json" style="display:none">
+    </div>
+    <p class="hint">保存JSONに下図DXFは含まれません（別途再読込）。</p>
+  </div>
+
+  <p class="note">
+    初期値は国交省「駐車場設計・施工指針」等に基づく一般値。駐車場法施行令の構造基準は500㎡以上の路外駐車場に適用。
+    条例上乗せ・附置義務・車いす使用者用区画・車両軌跡検証は対象外。本ツールは計画初期の概算検討用です。
+  </p>
+</aside>
+
+<!-- ================= キャンバス ================= -->
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="toolbar">
+    <div class="tbDrawSel" id="drawSel">
+      <span class="tbDrawLbl">作図</span>
+      <select id="selDraw">
+        <option value="site">敷地</option>
+        <option value="obs">障害物</option>
+        <option value="aisle">手動車路</option>
+      </select>
+    </div>
+    <button id="mEdit">選択</button>
+    <div class="tbSep"></div>
+    <button id="tFit" class="tbOp" title="全体表示（フィット）">⤢ 全体</button>
+  </div>
+  <div id="msg"><b id="msgMode"></b><span id="msgText">DXFを読み込んでなぞるか、プリセット／作図で敷地を入力してください（単位:m）</span></div>
+  <div id="warn"></div>
+</div>
+
+<!-- ================= 右パネル ================= -->
+<aside id="results">
+  <div class="kpi"><div class="num" id="kCount">–</div><div class="lbl">駐車台数</div></div>
+  <table class="stats">
+    <tr><td>敷地面積</td><td id="kArea">–</td></tr>
+    <tr><td>原単位（㎡/台）</td><td id="kUnit">–</td></tr>
+    <tr><td>車室面積計</td><td id="kStall">–</td></tr>
+    <tr><td>車路面積（参考）</td><td id="kAisleA">–</td></tr>
+    <tr><td>障害物面積</td><td id="kObstacle">–</td></tr>
+    <tr><td>緑地面積／緑地率</td><td id="kGreen">–</td></tr>
+    <tr><td>配置方向</td><td id="kTheta">–</td></tr>
+    <tr><td>探索案数／時間</td><td id="kTried">–</td></tr>
+  </table>
+  <h2 class="rh" id="altTitle">方向別 上位案</h2>
+  <div id="altList"><p class="hint">生成後に方向別の比較案が表示されます。</p></div>
+</aside>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   ENGINE ― 幾何・配置・DXF（純関数群。UI非依存）
+   ===================================================================== */
+/*ENGINE-START*/
+const EPS = 1e-9;
+
+function ptInPoly(p, poly){
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++){
+    const a = poly[i], b = poly[j];
+    if (((a.y > p.y) !== (b.y > p.y)) &&
+        (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) inside = !inside;
+  }
+  return inside;
+}
+function distPtSeg(p, a, b){
+  const dx = b.x-a.x, dy = b.y-a.y, L2 = dx*dx+dy*dy;
+  if (L2 < EPS) return Math.hypot(p.x-a.x, p.y-a.y);
+  let t = ((p.x-a.x)*dx + (p.y-a.y)*dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy));
+}
+function distToPolyEdge(p, poly){
+  let d = Infinity;
+  for (let i=0;i<poly.length;i++) d = Math.min(d, distPtSeg(p, poly[i], poly[(i+1)%poly.length]));
+  return d;
+}
+function polyArea(poly){
+  let s=0;
+  for (let i=0;i<poly.length;i++){ const a=poly[i],b=poly[(i+1)%poly.length]; s+=a.x*b.y-b.x*a.y; }
+  return s/2; // 符号付き
+}
+function polyAreaAbs(poly){ return Math.abs(polyArea(poly)); }
+function centroid(poly){
+  let x=0,y=0; for (const p of poly){x+=p.x;y+=p.y;} return {x:x/poly.length,y:y/poly.length};
+}
+function rot(p,c,ang){
+  const s=Math.sin(ang),co=Math.cos(ang),dx=p.x-c.x,dy=p.y-c.y;
+  return {x:c.x+dx*co-dy*s, y:c.y+dx*s+dy*co};
+}
+function bbox(pts){
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for (const p of pts){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}
+  return {x0,y0,x1,y1};
+}
+function samplePts(poly){
+  const out=[];
+  for (let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length];
+    out.push(a,{x:(a.x+b.x)/2,y:(a.y+b.y)/2});
+  }
+  out.push(centroid(poly));
+  return out;
+}
+// 凸多角形同士の交差（SAT）。eps>0 で「接触は交差とみなさない」
+function convexIntersect(A, B, eps){
+  eps = eps || 1e-3;
+  for (const poly of [A,B]){
+    for (let i=0;i<poly.length;i++){
+      const a=poly[i], b=poly[(i+1)%poly.length];
+      const nx = -(b.y-a.y), ny = b.x-a.x;
+      let minA=Infinity,maxA=-Infinity,minB=Infinity,maxB=-Infinity;
+      for (const p of A){const d=p.x*nx+p.y*ny; minA=Math.min(minA,d); maxA=Math.max(maxA,d);}
+      for (const p of B){const d=p.x*nx+p.y*ny; minB=Math.min(minB,d); maxB=Math.max(maxB,d);}
+      const L = Math.hypot(nx,ny) || 1;
+      if (maxA/L <= minB/L + eps || maxB/L <= minA/L + eps) return false;
+    }
+  }
+  return true;
+}
+// 線分交差パラメータ（p0→p1 上の t を返す。交差なしは null）
+function segSegT(p0,p1,q0,q1){
+  const rX=p1.x-p0.x, rY=p1.y-p0.y, sX=q1.x-q0.x, sY=q1.y-q0.y;
+  const den = rX*sY - rY*sX;
+  if (Math.abs(den) < EPS) return null;
+  const t = ((q0.x-p0.x)*sY-(q0.y-p0.y)*sX)/den;
+  const u = ((q0.x-p0.x)*rY-(q0.y-p0.y)*rX)/den;
+  if (t< -EPS || t>1+EPS || u< -EPS || u>1+EPS) return null;
+  return t;
+}
+// 線分をポリゴン内部にクリップ → 部分線分の配列
+function clipSegToPoly(p0,p1,poly){
+  const ts=[0,1];
+  for (let i=0;i<poly.length;i++){
+    const t = segSegT(p0,p1,poly[i],poly[(i+1)%poly.length]);
+    if (t!==null) ts.push(Math.max(0,Math.min(1,t)));
+  }
+  ts.sort((a,b)=>a-b);
+  const out=[];
+  for (let i=0;i<ts.length-1;i++){
+    const t0=ts[i],t1=ts[i+1];
+    if (t1-t0<1e-6) continue;
+    const tm=(t0+t1)/2;
+    const m={x:p0.x+(p1.x-p0.x)*tm, y:p0.y+(p1.y-p0.y)*tm};
+    if (ptInPoly(m,poly)){
+      out.push([{x:p0.x+(p1.x-p0.x)*t0,y:p0.y+(p1.y-p0.y)*t0},
+                {x:p0.x+(p1.x-p0.x)*t1,y:p0.y+(p1.y-p0.y)*t1}]);
+    }
+  }
+  return out;
+}
+// 線分からポリゴン群の内部にかかる部分を除去 → 残存部分線分の配列
+function segMinusPolys(p0,p1,polys){
+  const ts=[0,1];
+  for (const poly of polys){
+    for (let i=0;i<poly.length;i++){
+      const t=segSegT(p0,p1,poly[i],poly[(i+1)%poly.length]);
+      if (t!==null) ts.push(Math.max(0,Math.min(1,t)));
+    }
+  }
+  ts.sort((a,b)=>a-b);
+  const out=[];
+  for (let i=0;i<ts.length-1;i++){
+    const t0=ts[i],t1=ts[i+1];
+    if (t1-t0<1e-6) continue;
+    const tm=(t0+t1)/2;
+    const m={x:p0.x+(p1.x-p0.x)*tm, y:p0.y+(p1.y-p0.y)*tm};
+    let inside=false;
+    for (const poly of polys) if (ptInPoly(m,poly)){ inside=true; break; }
+    if (!inside) out.push([{x:p0.x+(p1.x-p0.x)*t0,y:p0.y+(p1.y-p0.y)*t0},
+                           {x:p0.x+(p1.x-p0.x)*t1,y:p0.y+(p1.y-p0.y)*t1}]);
+  }
+  return out;
+}
+// 閉ループの各辺を keep 内にクリップし、holes 内部を除去 → 部分線分の配列
+function clipLoopSegs(poly, keep, holes){
+  const segs=[];
+  for (let i=0;i<poly.length;i++){
+    const a=poly[i], b=poly[(i+1)%poly.length];
+    for (const s of (keep ? clipSegToPoly(a,b,keep) : [[a,b]]))
+      segs.push(...segMinusPolys(s[0],s[1],holes||[]));
+  }
+  return segs;
+}
+// 端点を共有する線分列をポリライン（点列）へ連結。閉ループは closed:true
+function chainSegs(segs){
+  const eq=(a,b)=>Math.abs(a.x-b.x)<1e-4 && Math.abs(a.y-b.y)<1e-4;
+  const pool=segs.map(s=>[s[0],s[1]]), out=[];
+  while (pool.length){
+    const chain=pool.pop();
+    let grown=true;
+    while (grown){
+      grown=false;
+      for (let i=0;i<pool.length;i++){
+        const s=pool[i], h=chain[0], t=chain[chain.length-1];
+        if (eq(t,s[0])) chain.push(s[1]);
+        else if (eq(t,s[1])) chain.push(s[0]);
+        else if (eq(h,s[1])) chain.unshift(s[0]);
+        else if (eq(h,s[0])) chain.unshift(s[1]);
+        else continue;
+        pool.splice(i,1); grown=true; break;
+      }
+    }
+    const closed = chain.length>2 && eq(chain[0],chain[chain.length-1]);
+    if (closed) chain.pop();
+    out.push({pts:chain, closed});
+  }
+  return out;
+}
+// ポリゴン内側オフセット（マイター）。失敗時 null
+function insetPolygon(poly, d){
+  if (d <= EPS) return poly.slice();
+  let pts = poly.slice();
+  if (polyArea(pts) < 0) pts = pts.reverse(); // CCWに揃える
+  const n = pts.length, out = [];
+  for (let i=0;i<n;i++){
+    const p0=pts[(i-1+n)%n], p1=pts[i], p2=pts[(i+1)%n];
+    // 各辺の内側法線（CCWなら左手側が内側）
+    const off = (a,b)=>{
+      const dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
+      const nx=-dy/L, ny=dx/L; // 左法線＝内側
+      return [{x:a.x+nx*d,y:a.y+ny*d},{x:b.x+nx*d,y:b.y+ny*d}];
+    };
+    const [a1,a2]=off(p0,p1), [b1,b2]=off(p1,p2);
+    const rX=a2.x-a1.x, rY=a2.y-a1.y, sX=b2.x-b1.x, sY=b2.y-b1.y;
+    const den=rX*sY-rY*sX;
+    if (Math.abs(den)<1e-12){ out.push({x:(a2.x+b1.x)/2,y:(a2.y+b1.y)/2}); continue; }
+    const t=((b1.x-a1.x)*sY-(b1.y-a1.y)*sX)/den;
+    const ix=a1.x+rX*t, iy=a1.y+rY*t;
+    if (Math.hypot(ix-p1.x,iy-p1.y) > d*8){ // マイター過大→ベベル
+      out.push(a2,b1);
+    } else out.push({x:ix,y:iy});
+  }
+  const A = polyAreaAbs(out);
+  if (!isFinite(A) || A < 1e-6 || A >= polyAreaAbs(pts)) return null;
+  return out;
+}
+// 中心線＋幅 → 車路帯ポリゴン（マイター、鋭角ベベル、端部フラット）
+function corridorFromPolyline(pts, width){
+  const h = width/2, n = pts.length;
+  if (n < 2) return null;
+  function sideLine(a,b,sign){
+    const dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
+    const nx=-dy/L*sign, ny=dx/L*sign;
+    return [{x:a.x+nx*h,y:a.y+ny*h},{x:b.x+nx*h,y:b.y+ny*h}];
+  }
+  function sidePts(sign){
+    const out=[];
+    let prev = sideLine(pts[0],pts[1],sign);
+    out.push(prev[0]);
+    for (let i=1;i<n-1;i++){
+      const cur = sideLine(pts[i],pts[i+1],sign);
+      const rX=prev[1].x-prev[0].x, rY=prev[1].y-prev[0].y;
+      const sX=cur[1].x-cur[0].x, sY=cur[1].y-cur[0].y;
+      const den=rX*sY-rY*sX;
+      if (Math.abs(den)<1e-12){ out.push(prev[1]); }
+      else{
+        const t=((cur[0].x-prev[0].x)*sY-(cur[0].y-prev[0].y)*sX)/den;
+        const ix=prev[0].x+rX*t, iy=prev[0].y+rY*t;
+        if (Math.hypot(ix-pts[i].x, iy-pts[i].y) > h*4) out.push(prev[1],cur[0]); // ベベル
+        else out.push({x:ix,y:iy});
+      }
+      prev = cur;
+    }
+    out.push(prev[1]);
+    return out;
+  }
+  const L = sidePts(1), R = sidePts(-1);
+  return L.concat(R.reverse());
+}
+
+/* ---------- 配置エンジン ---------- */
+// 外周部の扱い: 'ring'=外周車路 / 'stall'=外周車室(+内側に周回車路) / 'none'
+function perimeterMode(prm){
+  return prm.perimeter || (prm.ring ? 'ring' : 'none');
+}
+// 外周部の深さ（緑化帯の内側で内部配置から除外される幅）
+function perimeterDepth(prm){
+  const m = perimeterMode(prm);
+  return m==='stall' ? prm.stallD + prm.aisle : m==='ring' ? prm.aisle : 0;
+}
+// 外周車室: 緑化帯の内側の各辺に沿って外向き車室を並べる。
+// 各辺の有効長 = 辺長 − 両端の隅後退（凸角: D/tan(θ/2)。隣接辺の車室・出庫動線と干渉しない距離）。
+// 有効長を車室幅で割った整数台を中央寄せで並べ、余りは両端の緑地とする。
+function perimeterStalls(siteW, obstaclesW, corridorsW, prm){
+  const W=prm.stallW, D=prm.stallD;
+  let base = insetPolygon(siteW, prm.green) || siteW.slice();
+  if (polyArea(base) < 0) base = base.slice().reverse(); // CCWに統一
+  const usable = makeUsableTest(siteW, obstaclesW, corridorsW, prm.green);
+  const stripOk = makeUsableTest(siteW, obstaclesW, [], prm.green);
+  const nV = base.length;
+  const setback = []; // 各頂点での後退距離
+  for (let i=0;i<nV;i++){
+    const U=base[(i-1+nV)%nV], V=base[i], Wp=base[(i+1)%nV];
+    const cross=(V.x-U.x)*(Wp.y-V.y)-(V.y-U.y)*(Wp.x-V.x);
+    if (cross<=1e-9){ setback.push(0); continue; } // 凹角・直線は後退不要
+    const a={x:U.x-V.x,y:U.y-V.y}, b={x:Wp.x-V.x,y:Wp.y-V.y};
+    const la=Math.hypot(a.x,a.y)||1, lb=Math.hypot(b.x,b.y)||1;
+    const th=Math.acos(Math.max(-1,Math.min(1,(a.x*b.x+a.y*b.y)/(la*lb)))); // 内角
+    setback.push(th>1e-3 ? D/Math.tan(th/2) : Infinity);
+  }
+  const stalls=[], strips=[]; // strips[i] = stalls[i] の前面アクセス帯
+  for (let i=0;i<nV;i++){
+    const A=base[i], B=base[(i+1)%nV];
+    const L=Math.hypot(B.x-A.x, B.y-A.y);
+    const avail = L - setback[i] - setback[(i+1)%nV];
+    if (avail < W) continue;
+    const u={x:(B.x-A.x)/L, y:(B.y-A.y)/L};
+    let n={x:-u.y, y:u.x}; // 内側向き法線に補正
+    const mid={x:(A.x+B.x)/2, y:(A.y+B.y)/2};
+    if (!ptInPoly({x:mid.x+n.x*0.05, y:mid.y+n.y*0.05}, siteW)) n={x:-n.x, y:-n.y};
+    const cnt=Math.floor(avail/W), pad=(avail-cnt*W)/2; // 中央寄せ、余りは両端の緑地
+    for (let k=0;k<cnt;k++){
+      const s0=setback[i]+pad+k*W;
+      const b1={x:A.x+u.x*s0, y:A.y+u.y*s0};
+      const b2={x:A.x+u.x*(s0+W), y:A.y+u.y*(s0+W)};
+      const f1={x:b1.x+n.x*D, y:b1.y+n.y*D}, f2={x:b2.x+n.x*D, y:b2.y+n.y*D};
+      const sp=[f1,f2,b2,b1]; // [0][1]=前面（車路側）
+      if (!usable(sp,false)) continue;
+      const strip=[f1,f2,{x:f2.x+n.x*prm.aisle,y:f2.y+n.y*prm.aisle},
+                        {x:f1.x+n.x*prm.aisle,y:f1.y+n.y*prm.aisle}];
+      if (!stripOk(strip,true)) continue; // 前面車路が敷地・障害物と干渉
+      if (stalls.some(q=>convexIntersect(sp,q,0.01))) continue;   // 念のため: 重複
+      if (stalls.some(q=>convexIntersect(strip,q,0.01))) continue; // 念のため: 出庫経路が塞がれる
+      if (strips.some(q=>convexIntersect(sp,q,0.01))) continue;    // 念のため: 相手の出庫経路を塞ぐ
+      stalls.push(sp); strips.push(strip);
+    }
+  }
+  return stalls;
+}
+function stallPolyAt(x, yAisle, up, W, D, a){
+  const sinA=Math.sin(a), cosA=Math.cos(a);
+  if (up){
+    const Ay=yAisle - W*cosA, Ax=x;
+    const p1={x:Ax,y:Ay}, p2={x:Ax+W*sinA,y:Ay+W*cosA};
+    return [p1,p2,{x:p2.x+D*cosA,y:p2.y-D*sinA},{x:p1.x+D*cosA,y:p1.y-D*sinA}];
+  } else {
+    const Ay=yAisle + W*cosA, Ax=x;
+    const p1={x:Ax,y:Ay}, p2={x:Ax+W*sinA,y:Ay-W*cosA};
+    return [p1,p2,{x:p2.x+D*cosA,y:p2.y+D*sinA},{x:p1.x+D*cosA,y:p1.y+D*sinA}];
+  }
+}
+function makeUsableTest(site, obstacles, corridors, margin){
+  return function(poly, ignoreCorridors){
+    const pts = samplePts(poly);
+    for (const p of pts){
+      if (!ptInPoly(p, site)) return false;
+      if (margin > EPS && distToPolyEdge(p, site) < margin - 1e-6) return false;
+      for (const ob of obstacles) if (ptInPoly(p, ob)) return false;
+      if (!ignoreCorridors) for (const co of corridors) if (ptInPoly(p, co)) return false;
+    }
+    for (const ob of obstacles) for (const v of ob) if (ptInPoly(v, poly)) return false;
+    if (!ignoreCorridors) for (const co of corridors) for (const v of co) if (ptInPoly(v, poly)) return false;
+    return true;
+  };
+}
+// モードA: 1方向・1オフセット評価
+function evaluateA(siteW, obstaclesW, corridorsW, prm, thetaDeg, offset){
+  const th = thetaDeg*Math.PI/180, c = centroid(siteW);
+  const site = siteW.map(p=>rot(p,c,-th));
+  const obstacles = obstaclesW.map(ob=>ob.map(p=>rot(p,c,-th)));
+  const corridors = corridorsW.map(co=>co.map(p=>rot(p,c,-th)));
+  const a = prm.angle*Math.PI/180, sinA=Math.sin(a), cosA=Math.cos(a);
+  const W=prm.stallW, D=prm.stallD, A=prm.aisle;
+  const Deff = D*sinA + W*cosA, pitch = W/sinA, P = 2*Deff + A;
+  const stallMargin = prm.green + perimeterDepth(prm);
+  const usableStall = makeUsableTest(site, obstacles, corridors, stallMargin);
+  const usableStrip = makeUsableTest(site, obstacles, [], prm.green); // 車路帯は手動車路と重なって良い
+  const bb = bbox(site), stalls = [], bands = [];
+  const accessDepth = A;
+  function tryRow(yAisle, up){
+    let n=0, x0=Infinity, x1=-Infinity;
+    for (let x=bb.x0-pitch; x<=bb.x1+pitch; x+=pitch){
+      const sp = stallPolyAt(x,yAisle,up,W,D,a);
+      if (!usableStall(sp,false)) continue;
+      const strip = up
+        ? [{x,y:yAisle},{x:x+pitch,y:yAisle},{x:x+pitch,y:yAisle+accessDepth},{x,y:yAisle+accessDepth}]
+        : [{x,y:yAisle},{x:x+pitch,y:yAisle},{x:x+pitch,y:yAisle-accessDepth},{x,y:yAisle-accessDepth}];
+      if (!usableStrip(strip,true)) continue;
+      stalls.push(sp); n++;
+      for (const p of sp){ x0=Math.min(x0,p.x); x1=Math.max(x1,p.x); }
+    }
+    return {n,x0,x1};
+  }
+  const k0=Math.floor((bb.y0-offset-P)/P), k1=Math.ceil((bb.y1-offset+P)/P);
+  for (let k=k0;k<=k1;k++){
+    const yBase=offset+k*P, yLo=yBase+Deff, yHi=yLo+A;
+    const r1=tryRow(yLo,true), r2=tryRow(yHi,false);
+    if (r1.n+r2.n>0)
+      bands.push({y0:yLo, y1:yHi,
+        x0:Math.min(r1.x0,r2.x0), x1:Math.max(r1.x1,r2.x1)}); // 車路帯は最端車室で止める
+  }
+  return {count:stalls.length, theta:thetaDeg, offset,
+    stallsW:stalls.map(sp=>sp.map(p=>rot(p,c,th))), bands, frame:{c,th,bb}};
+}
+function generateA(siteW, obstaclesW, corridorsW, prm){
+  const t0 = (typeof performance!=='undefined'?performance.now():Date.now());
+  let thetas=[];
+  if (prm.autoDir){
+    for (let i=0;i<siteW.length;i++){
+      const a=siteW[i], b=siteW[(i+1)%siteW.length];
+      let ang=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;
+      thetas.push(((ang%180)+180)%180);
+    }
+    for (let d=0; d<180; d+=15) thetas.push(d);
+    thetas=[...new Set(thetas.map(t=>Math.round(t*2)/2))];
+  } else thetas=[prm.dir];
+  const a=prm.angle*Math.PI/180;
+  const P = 2*(prm.stallD*Math.sin(a)+prm.stallW*Math.cos(a)) + prm.aisle;
+  let best=null, tried=0; const perTheta=[];
+  for (const th of thetas){
+    let bt=null;
+    for (let off=0; off<P-1e-6; off+=0.5){
+      const r=evaluateA(siteW,obstaclesW,corridorsW,prm,th,off); tried++;
+      if (!bt||r.count>bt.count) bt=r;
+      if (!best||r.count>best.count) best=r;
+    }
+    perTheta.push(bt);
+  }
+  perTheta.sort((x,y)=>y.count-x.count);
+  // 外周車室モード: 方向によらない外周車室を各案に合算
+  if (perimeterMode(prm)==='stall'){
+    const perim = perimeterStalls(siteW, obstaclesW, corridorsW, prm);
+    if (perim.length){
+      const seen=new Set();
+      for (const r of [best, ...perTheta]){
+        if (!r || seen.has(r)) continue;
+        seen.add(r);
+        r.count += perim.length;
+        r.stallsW = r.stallsW.concat(perim);
+      }
+    }
+  }
+  const t1=(typeof performance!=='undefined'?performance.now():Date.now());
+  return {best, perTheta:perTheta.slice(0,5), tried, ms:Math.round(t1-t0)};
+}
+// モードA後処理: 車路帯端部を外周車路・手動車路まで延長（緑地を切断して接続）し、
+// 外周車路との突き当たり部で交角120°以下なら底辺2mの隅切りを緑地に生成
+function finishA(res, siteW, obstaclesW, corridorsW, prm){
+  if (!res || !res.frame || res._fin) return res;
+  res._fin = true;
+  const {c, th} = res.frame;
+  const site = siteW.map(p=>rot(p,c,-th));
+  const obstacles = obstaclesW.map(ob=>ob.map(p=>rot(p,c,-th)));
+  const corridors = corridorsW.map(co=>co.map(p=>rot(p,c,-th)));
+  const ringM = prm.green + perimeterDepth(prm);
+  const hasRing = perimeterMode(prm)!=='none';
+  const cuts = [];
+  function inCorridor(p){
+    for (const co of corridors) if (ptInPoly(p,co)) return true;
+    return false;
+  }
+  for (const b of res.bands){
+    const ys = [b.y0+0.15, (b.y0+b.y1)/2, b.y1-0.15];
+    for (const dir of [-1,1]){
+      let x = dir>0 ? b.x1 : b.x0;
+      let connected = null;
+      for (let step=0; step<160 && !connected; step++){ // 最大40m
+        x += dir*0.25;
+        let allTarget=true, ringAll=true, blocked=false;
+        for (const y of ys){
+          const p={x,y};
+          if (!ptInPoly(p,site)){ blocked=true; break; }
+          let inObs=false;
+          for (const ob of obstacles) if (ptInPoly(p,ob)){ inObs=true; break; }
+          if (inObs){ blocked=true; break; }
+          const isRing = hasRing && distToPolyEdge(p,site) < ringM;
+          if (!isRing){
+            ringAll=false;
+            if (!inCorridor(p)) allTarget=false;
+          }
+        }
+        if (blocked) break;
+        if (allTarget) connected = ringAll ? 'ring' : 'corridor';
+      }
+      if (!connected) continue;
+      if (dir>0) b.x1=x; else b.x0=x;
+      if (connected!=='ring') continue;
+      // 隅切り: 最寄り辺から外周車路の内側ラインを求め、帯側縁との交角を判定
+      const yMid=(b.y0+b.y1)/2;
+      let bi=0, bd=Infinity;
+      for (let i=0;i<site.length;i++){
+        const d=distPtSeg({x,y:yMid}, site[i], site[(i+1)%site.length]);
+        if (d<bd){bd=d;bi=i;}
+      }
+      const A=site[bi], B=site[(bi+1)%site.length];
+      const eL=Math.hypot(B.x-A.x,B.y-A.y)||1;
+      const u={x:(B.x-A.x)/eL, y:(B.y-A.y)/eL};
+      let n={x:-u.y,y:u.x};
+      const mid={x:(A.x+B.x)/2,y:(A.y+B.y)/2};
+      if (!ptInPoly({x:mid.x+n.x*0.05, y:mid.y+n.y*0.05}, site)) n={x:-n.x,y:-n.y};
+      const La={x:A.x+n.x*ringM, y:A.y+n.y*ringM}; // 内周車路の内側ライン上の点
+      if (Math.abs(u.y)<1e-6) continue; // 内側ラインが帯側縁と平行
+      for (const s of [-1,1]){ // s=-1: y0側の角, s=1: y1側の角
+        const yEdge = s>0 ? b.y1 : b.y0;
+        const t=(yEdge-La.y)/u.y;
+        const P={x:La.x+u.x*t, y:yEdge}; // 帯側縁×内側ラインの交点
+        if (Math.abs(P.x-x) > prm.aisle+6) continue; // 端部近傍でない
+        const r1={x:-dir, y:0}; // 帯側縁に沿って帯内部へ戻る向き
+        const w = (u.y*s>0) ? u : {x:-u.x,y:-u.y}; // 内側ラインに沿って緑地側へ
+        const ang=Math.acos(Math.max(-1,Math.min(1,r1.x*w.x+r1.y*w.y)));
+        const deg=ang*180/Math.PI;
+        if (deg>120.5 || deg<15) continue; // 120°超は不要、極小角は縮退
+        const d2=1/Math.sin(ang/2); // 底辺2m → 各辺に沿う距離
+        cuts.push({P, r1, w, d2});
+      }
+    }
+  }
+  // 車室と干渉する隅切りは底辺を縮小し、収まる最大サイズで採用（世界座標へ変換）
+  res.cutsW = [];
+  for (const cut of cuts){
+    const {P,r1,w,d2}=cut;
+    for (let f=1; f>=0.12; f-=0.125){ // 底辺2.0m→0.25mまで0.25m刻みで縮小
+      const tri=[P,
+        {x:P.x+r1.x*d2*f, y:P.y+r1.y*d2*f},
+        {x:P.x+w.x*d2*f,  y:P.y+w.y*d2*f}].map(p=>rot(p,c,th));
+      if (!res.stallsW.some(sp=>convexIntersect(tri,sp,0.02))){ res.cutsW.push(tri); break; }
+    }
+  }
+  return res;
+}
+// モードB: 手動車路の両側に車室を自動充填
+function generateB(siteW, obstaclesW, aisleDefs, prm){
+  // aisleDefs: [{pts, width, fill:'both'|'left'|'right'|'none', corridor}]
+  const t0=(typeof performance!=='undefined'?performance.now():Date.now());
+  const a=prm.angle*Math.PI/180, sinA=Math.sin(a), cosA=Math.cos(a);
+  const W=prm.stallW, D=prm.stallD, pitch=W/sinA;
+  const corridors = aisleDefs.map(d=>d.corridor).filter(Boolean);
+  const accepted=[];
+  const usable = makeUsableTest(siteW, obstaclesW, [], prm.green);
+  function collides(sp){
+    for (const q of accepted) if (convexIntersect(sp,q,0.01)) return true;
+    for (const co of corridors){
+      for (const p of samplePts(sp)) if (ptInPoly(p,co)) return true;
+    }
+    return false;
+  }
+  for (const def of aisleDefs){
+    if (def.fill==='none') continue;
+    const h = def.width/2 + 0.005;
+    for (let i=0;i<def.pts.length-1;i++){
+      const p0=def.pts[i], p1=def.pts[i+1];
+      const segAng=Math.atan2(p1.y-p0.y,p1.x-p0.x);
+      const len=Math.hypot(p1.x-p0.x,p1.y-p0.y);
+      const c={x:p0.x,y:p0.y};
+      const toWorld = p=>rot(p,{x:0,y:0},segAng); // ローカル(セグメント基準)→回転
+      function place(side){ // side: +1=左(進行方向左), -1=右
+        for (let x=0; x+pitch<=len+1e-6; x+=pitch){
+          // ローカル座標: セグメントは(0,0)→(len,0)
+          const yA = side*h;
+          const spL = stallPolyAt(x, yA, side<0, W, D, a); // 左側(y>0)は車路が下→up=false
+          const sp = spL.map(p=>{const q=toWorld(p); return {x:q.x+c.x,y:q.y+c.y};});
+          if (!usable(sp,true)) continue;
+          if (collides(sp)) continue;
+          accepted.push(sp);
+        }
+      }
+      if (def.fill==='both'||def.fill==='left') place(1);
+      if (def.fill==='both'||def.fill==='right') place(-1);
+    }
+  }
+  const t1=(typeof performance!=='undefined'?performance.now():Date.now());
+  return {count:accepted.length, stallsW:accepted, bands:[], theta:0,
+    frame:null, ms:Math.round(t1-t0)};
+}
+
+/* ---------- DXFパーサ（ASCII・LINE/LWPOLYLINE/POLYLINE/ARC/CIRCLE） ---------- */
+function parseDxf(text){
+  const lines = text.split(/\r\n|\r|\n/);
+  const pairs=[];
+  for (let i=0;i+1<lines.length;i+=2){
+    pairs.push([parseInt(lines[i].trim(),10), lines[i+1]]);
+  }
+  const ents=[]; const skipped={};
+  let insunits=0;
+  // ヘッダ変数の事前スキャン（SECTIONスキップに巻き込まれないよう独立に走査）
+  for (let k=0;k+1<pairs.length;k++){
+    if (pairs[k][0]===9 && pairs[k][1].trim()==='$INSUNITS' && pairs[k+1][0]===70){
+      insunits=parseInt(pairs[k+1][1],10)||0; break;
+    }
+  }
+  let i=0;
+  function arcPts(cx,cy,r,a0,a1){
+    let d=a1-a0; while(d<=0)d+=360;
+    const n=Math.max(4,Math.ceil(d/10)), out=[];
+    for (let k=0;k<=n;k++){
+      const t=(a0+d*k/n)*Math.PI/180;
+      out.push({x:cx+r*Math.cos(t), y:cy+r*Math.sin(t)});
+    }
+    return out;
+  }
+  function bulgeArc(p0,p1,bulge){
+    // bulge = tan(挟角/4)
+    const theta=4*Math.atan(bulge);
+    const dx=p1.x-p0.x, dy=p1.y-p0.y, chord=Math.hypot(dx,dy);
+    if (chord<EPS || Math.abs(theta)<1e-6) return [p1];
+    const r=chord/(2*Math.sin(Math.abs(theta)/2));
+    const mx=(p0.x+p1.x)/2, my=(p0.y+p1.y)/2;
+    const h=Math.sqrt(Math.max(0,r*r-chord*chord/4)) * (bulge>0?1:-1);
+    const cx=mx - dy/chord*h, cy=my + dx/chord*h;
+    let a0=Math.atan2(p0.y-cy,p0.x-cx), a1=Math.atan2(p1.y-cy,p1.x-cx);
+    if (bulge>0 && a1<a0) a1+=2*Math.PI;
+    if (bulge<0 && a1>a0) a1-=2*Math.PI;
+    const n=Math.max(2,Math.ceil(Math.abs(a1-a0)/(Math.PI/18))), out=[];
+    for (let k=1;k<=n;k++){
+      const t=a0+(a1-a0)*k/n;
+      out.push({x:cx+r*Math.cos(t), y:cy+r*Math.sin(t)});
+    }
+    return out;
+  }
+  while (i<pairs.length){
+    const [code,val]=pairs[i];
+    if (code!==0){ i++; continue; }
+    const type=val.trim();
+    if (type==='LINE'){
+      let layer='0',x0=0,y0=0,x1=0,y1=0; i++;
+      while (i<pairs.length && pairs[i][0]!==0){
+        const [c,v]=pairs[i], f=parseFloat(v);
+        if (c===8) layer=v.trim();
+        else if (c===10)x0=f; else if(c===20)y0=f;
+        else if (c===11)x1=f; else if(c===21)y1=f;
+        i++;
+      }
+      ents.push({layer, pts:[{x:x0,y:y0},{x:x1,y:y1}], closed:false});
+    } else if (type==='LWPOLYLINE'){
+      let layer='0', closed=false; const vs=[]; let cur=null; i++;
+      while (i<pairs.length && pairs[i][0]!==0){
+        const [c,v]=pairs[i], f=parseFloat(v);
+        if (c===8) layer=v.trim();
+        else if (c===70) closed=(parseInt(v,10)&1)===1;
+        else if (c===10){ cur={x:f,y:0,bulge:0}; vs.push(cur); }
+        else if (c===20 && cur) cur.y=f;
+        else if (c===42 && cur) cur.bulge=f;
+        i++;
+      }
+      const pts=[];
+      for (let k=0;k<vs.length;k++){
+        const p0=vs[k];
+        if (k===0) pts.push({x:p0.x,y:p0.y});
+        const nxt = (k<vs.length-1)?vs[k+1]:(closed?vs[0]:null);
+        if (!nxt) break;
+        if (p0.bulge) pts.push(...bulgeArc({x:p0.x,y:p0.y},{x:nxt.x,y:nxt.y},p0.bulge));
+        else pts.push({x:nxt.x,y:nxt.y});
+      }
+      if (pts.length>=2) ents.push({layer, pts, closed});
+    } else if (type==='POLYLINE'){
+      let layer='0', closed=false; const pts=[]; i++;
+      while (i<pairs.length && pairs[i][0]!==0){
+        const [c,v]=pairs[i];
+        if (c===8) layer=v.trim();
+        else if (c===70) closed=(parseInt(v,10)&1)===1;
+        i++;
+      }
+      while (i<pairs.length && pairs[i][0]===0 && pairs[i][1].trim()==='VERTEX'){
+        let x=0,y=0; i++;
+        while (i<pairs.length && pairs[i][0]!==0){
+          const [c,v]=pairs[i], f=parseFloat(v);
+          if (c===10)x=f; else if(c===20)y=f;
+          i++;
+        }
+        pts.push({x,y});
+      }
+      if (i<pairs.length && pairs[i][0]===0 && pairs[i][1].trim()==='SEQEND'){
+        i++;
+        while (i<pairs.length && pairs[i][0]!==0) i++;
+      }
+      if (pts.length>=2) ents.push({layer, pts, closed});
+    } else if (type==='ARC'){
+      let layer='0',cx=0,cy=0,r=0,a0=0,a1=360; i++;
+      while (i<pairs.length && pairs[i][0]!==0){
+        const [c,v]=pairs[i], f=parseFloat(v);
+        if (c===8)layer=v.trim(); else if(c===10)cx=f; else if(c===20)cy=f;
+        else if(c===40)r=f; else if(c===50)a0=f; else if(c===51)a1=f;
+        i++;
+      }
+      ents.push({layer, pts:arcPts(cx,cy,r,a0,a1), closed:false});
+    } else if (type==='CIRCLE'){
+      let layer='0',cx=0,cy=0,r=0; i++;
+      while (i<pairs.length && pairs[i][0]!==0){
+        const [c,v]=pairs[i], f=parseFloat(v);
+        if (c===8)layer=v.trim(); else if(c===10)cx=f; else if(c===20)cy=f; else if(c===40)r=f;
+        i++;
+      }
+      ents.push({layer, pts:arcPts(cx,cy,r,0,360), closed:true});
+    } else {
+      if (!['SECTION','ENDSEC','EOF','TABLE','ENDTAB','LAYER','VPORT','LTYPE','STYLE','APPID','DIMSTYLE','BLOCK_RECORD','CLASS','ENDBLK','BLOCK','VIEW','UCS'].includes(type))
+        skipped[type]=(skipped[type]||0)+1;
+      i++;
+      while (i<pairs.length && pairs[i][0]!==0) i++;
+    }
+  }
+  return {ents, skipped, insunits};
+}
+// DXF出力用モデル構築: 画面表示と一致するよう緑地外形線の切り欠き・車路線のクリップを行う
+function buildExportModel(site, obstacles, corridors, shown, prm, mode){
+  const model={site, obstacles, stalls:shown.stallsW,
+    greenChains:[], corridorChains:[], aisleLines:[], annotation:null};
+  const isA = mode==='A' && !!shown.frame;
+  const cuts = (isA && shown.cutsW) ? shown.cutsW : [];
+  const bandRects=[];
+  let clipPoly=null;
+  if (isA){
+    const {c,th}=shown.frame;
+    clipPoly = insetPolygon(site, prm.green + perimeterDepth(prm)) || site;
+    for (const b of shown.bands)
+      bandRects.push([{x:b.x0,y:b.y0},{x:b.x1,y:b.y0},
+                      {x:b.x1,y:b.y1},{x:b.x0,y:b.y1}].map(p=>rot(p,c,th)));
+  }
+  const lineHoles=[...corridors, ...obstacles];          // 車路線から消し込む領域
+  const greenHoles=[...lineHoles, ...bandRects, ...cuts]; // 緑地外形線を切り欠く領域
+  // 外周緑化帯の内側ライン: 車路・障害物が横断する部分を切り欠く
+  if (perimeterMode(prm)==='stall'){
+    // 外周車室モード: 緑地は車室帯の余白まで連続するため、境界線は車室帯の内側
+    // （=外周車路の外縁）に引き、車室前面と重なる部分は切り欠く（車室はSTALL層で出力済み）
+    const gi=insetPolygon(site, prm.green + prm.stallD);
+    if (gi){
+      const grow=(p,f)=>{const c=centroid(p); return p.map(q=>({x:c.x+(q.x-c.x)*f, y:c.y+(q.y-c.y)*f}));};
+      const holes=[...greenHoles, ...(shown.stallsW||[]).map(sp=>grow(sp,1.02))];
+      model.greenChains.push(...chainSegs(clipLoopSegs(gi, null, holes)));
+    }
+  } else if (prm.green>0){
+    const gi=insetPolygon(site, prm.green);
+    if (gi) model.greenChains.push(...chainSegs(clipLoopSegs(gi, null, greenHoles)));
+  }
+  // 外周車路の内側ライン（=内部緑地の外形）: 車路帯の取り付き口・手動車路部分を開口
+  if (isA && perimeterMode(prm)!=='none' && clipPoly!==site)
+    model.greenChains.push(...chainSegs(clipLoopSegs(clipPoly, null, greenHoles)));
+  // 手動車路: 敷地外へはみ出す部分を除去し、交差する他車路の内部の線も消去
+  for (let k=0;k<corridors.length;k++)
+    model.corridorChains.push(...chainSegs(
+      clipLoopSegs(corridors[k], site, corridors.filter((_,i)=>i!==k))));
+  if (isA){
+    const {c,th}=shown.frame;
+    // 車路帯の線は外周車路の内側ラインで止め、手動車路・障害物の内部は消去（突き抜け防止）
+    const push=(p0,p1,keep)=>{
+      for (const s of clipSegToPoly(p0,p1,keep))
+        model.aisleLines.push(...segMinusPolys(s[0],s[1],lineHoles));
+    };
+    for (const b of shown.bands){
+      for (const y of [b.y0,b.y1]) // 帯の側縁
+        push(rot({x:b.x0,y},c,th), rot({x:b.x1,y},c,th), clipPoly);
+      for (const x of [b.x0,b.x1]) // 帯の端部線（外周車路・手動車路に接続した端は消える）
+        push(rot({x,y:b.y0},c,th), rot({x,y:b.y1},c,th), clipPoly);
+    }
+    for (const tri of cuts) push(tri[1],tri[2],site); // 隅切りライン
+  }
+  return model;
+}
+// DXF書き出し（ASCII・R12互換）
+function buildDxf(model, unitFactor){
+  const u = p=>({x:p.x*unitFactor, y:p.y*unitFactor});
+  const L=[];
+  const push=(...v)=>L.push(...v);
+  push('0','SECTION','2','ENTITIES');
+  function polyline(layer, pts, closed){
+    push('0','POLYLINE','8',layer,'66','1','70', closed?'1':'0');
+    for (const p0 of pts){ const p=u(p0); push('0','VERTEX','8',layer,'10',p.x.toFixed(2),'20',p.y.toFixed(2)); }
+    push('0','SEQEND','8',layer);
+  }
+  function line(layer,a0,b0){
+    const a=u(a0), b=u(b0);
+    push('0','LINE','8',layer,'10',a.x.toFixed(2),'20',a.y.toFixed(2),'11',b.x.toFixed(2),'21',b.y.toFixed(2));
+  }
+  if (model.site) polyline('SITE', model.site, true);
+  for (const ch of model.greenChains||[]) polyline('GREEN', ch.pts, ch.closed); // 緑地外形（切り欠き済み）
+  for (const ob of model.obstacles||[]) polyline('OBSTACLE', ob, true);
+  // 車室区画線: 前面（車路側）が開いたコの字（sp[0][1]が前面）
+  for (const sp of model.stalls||[]) polyline('STALL', [sp[0],sp[3],sp[2],sp[1]], false);
+  for (const ch of model.corridorChains||[]) polyline('AISLE_MANUAL', ch.pts, ch.closed); // 敷地内クリップ済み
+  for (const seg of model.aisleLines||[]) line('AISLE', seg[0], seg[1]);
+  if (model.annotation){
+    const p=u(model.annotation.pos);
+    push('0','TEXT','8','ANNOTATION','10',p.x.toFixed(2),'20',p.y.toFixed(2),
+         '40',(1.0*unitFactor).toFixed(2),'1',model.annotation.text);
+  }
+  push('0','ENDSEC','0','EOF');
+  return L.join('\r\n');
+}
+/*ENGINE-END*/
+
+/* =====================================================================
+   UI ― 状態・描画・操作
+   ===================================================================== */
+const state = {
+  mode:'A', // 配置モードは自動配置(A)のみ
+  site:null, obstacles:[], aisles:[], // aisle:{pts,width}
+  underlay:null, // {ents,layers:{name:bool},snapPts,scale,off:{x,y},visible,opacity}
+  tool:'site', drawing:null, hoverWorld:null,
+  snapHit:null, // {p:{x,y}, kind:'end'|'mid'} 現在カーソルが吸着している点
+  ortho:false,  // Shift押下中の水平・垂直スナップ（直交モード）
+  sel:null, // {type:'vertex',list,idx,min} | {type:'shape',kind:'site'|'obs'|'aisle',idxs:[...]}
+  result:null, shown:null,
+  greenPath:null, // 緑地として残す余りセル群（世界座標のPath2D。renderResultsで更新）
+  view:{s:12,ox:80,oy:80}, dragging:null,
+  calib:null,
+};
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+
+function readParams(){
+  const perimeter = $('pPerimeter').value;
+  return {
+    stallW:+$('pW').value, stallD:+$('pD').value, angle:+$('pAngle').value,
+    aisle:+$('pAisle').value, perimeter, ring: perimeter!=='none',
+    green:+$('pGreen').value,
+    autoDir:$('pAutoDir').checked, dir:+$('pDir').value,
+  };
+}
+function aisleWidth(a){ return a.width!=null ? a.width : +$('pAisleM').value; }
+function corridorOf(a){ return corridorFromPolyline(a.pts, aisleWidth(a)); }
+function allCorridors(){ return state.aisles.map(corridorOf).filter(Boolean); }
+
+/* ---------- 座標変換・ビュー ---------- */
+function w2s(p){ return {x:state.view.ox+p.x*state.view.s, y:state.view.oy-p.y*state.view.s}; }
+function s2w(p){ return {x:(p.x-state.view.ox)/state.view.s, y:(state.view.oy-p.y)/state.view.s}; }
+function fitView(){
+  const polys=[];
+  if (state.site) polys.push(state.site);
+  for (const ob of state.obstacles) polys.push(ob);
+  for (const a of state.aisles) polys.push(a.pts);
+  if (state.drawing && state.drawing.pts.length) polys.push(state.drawing.pts);
+  if (state.underlay && state.underlay.visible)
+    for (const e of state.underlay.ents) polys.push(e.pts.map(uPt));
+  if (!polys.length) return;
+  const bb=bbox(polys.flat()), pad=40;
+  const sw=cv.clientWidth-pad*2, sh=cv.clientHeight-pad*2;
+  const s=Math.min(sw/Math.max(bb.x1-bb.x0,1), sh/Math.max(bb.y1-bb.y0,1));
+  state.view.s=s;
+  state.view.ox=pad+(sw-(bb.x1-bb.x0)*s)/2 - bb.x0*s;
+  state.view.oy=cv.clientHeight-pad-(sh-(bb.y1-bb.y0)*s)/2 + bb.y0*s;
+  draw();
+}
+// 下図座標→ワールド(m)
+function uPt(p){
+  const u=state.underlay;
+  return {x:p.x*u.scale+u.off.x, y:p.y*u.scale+u.off.y};
+}
+
+/* ---------- 描画 ---------- */
+function pathPoly(poly, close=true){
+  ctx.beginPath();
+  poly.forEach((p,i)=>{const q=w2s(p); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y);});
+  if (close) ctx.closePath();
+}
+function drawDimLabel(aW,bW,color){
+  const a=w2s(aW), b=w2s(bW);
+  const d=Math.hypot(bW.x-aW.x,bW.y-aW.y);
+  if (d<1e-6) return;
+  const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+  const text=d.toFixed(2)+' m';
+  ctx.save();
+  ctx.font='11px "SFMono-Regular",Consolas,monospace';
+  const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(20,24,29,.88)';
+  ctx.fillRect(mx-tw/2-5,my-16,tw+10,15);
+  ctx.strokeStyle='#313a44'; ctx.lineWidth=1;
+  ctx.strokeRect(mx-tw/2-5,my-16,tw+10,15);
+  ctx.fillStyle=color;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text, mx, my-8.5);
+  ctx.restore();
+}
+function draw(){
+  const dpr=window.devicePixelRatio||1;
+  if (cv.width!==cv.clientWidth*dpr||cv.height!==cv.clientHeight*dpr){
+    cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
+  }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cv.clientWidth,cv.clientHeight);
+  drawGrid();
+  drawUnderlay();
+  const prm=readParams();
+  const corridors=allCorridors();
+
+  if (state.site){
+    ctx.save();
+    pathPoly(state.site); ctx.fillStyle='#20272f'; ctx.fill();
+    ctx.clip();
+    // レイアウト生成後は舗装色をベースに、緑地（外周帯＋外周帯と連結する余り）だけを明示的に塗る。
+    // 孤立した島（取り残し）は舗装のまま残る。未生成時は従来どおり緑地ベース。
+    const hasGreenCells = !!(state.shown && state.greenPath);
+    pathPoly(state.site); ctx.fillStyle = hasGreenCells ? '#2c3742' : '#435F52'; ctx.fill();
+    if (hasGreenCells){
+      ctx.save();
+      ctx.transform(state.view.s,0,0,-state.view.s,state.view.ox,state.view.oy);
+      ctx.fillStyle='#435F52'; ctx.fill(state.greenPath);
+      ctx.restore();
+    }
+    if (prm.ring){
+      pathPoly(state.site);
+      ctx.lineWidth=2*(prm.green+perimeterDepth(prm))*state.view.s;
+      ctx.strokeStyle='#2c3742'; ctx.stroke();
+    }
+    // 外周車室モードでは車室帯の余白も緑地（車室は後から上塗り）
+    const greenW = prm.green + (perimeterMode(prm)==='stall' ? prm.stallD : 0);
+    if (greenW>0){
+      pathPoly(state.site);
+      ctx.lineWidth=2*greenW*state.view.s;
+      ctx.strokeStyle='#435F52'; ctx.stroke(); // 残余部分の緑地と同色（不透明）
+    }
+    if (state.shown && state.shown.frame){
+      const {c,th}=state.shown.frame;
+      ctx.fillStyle='#2c3742';
+      for (const b of state.shown.bands){
+        const r=[{x:b.x0,y:b.y0},{x:b.x1,y:b.y0},
+                 {x:b.x1,y:b.y1},{x:b.x0,y:b.y1}].map(p=>rot(p,c,th));
+        pathPoly(r); ctx.fill();
+      }
+      if (state.shown.cutsW) for (const tri of state.shown.cutsW){ pathPoly(tri); ctx.fill(); } // 隅切り
+    }
+    // 手動車路（緑化帯を視覚的に切り欠く: 後描き）
+    for (let k=0;k<corridors.length;k++){
+      pathPoly(corridors[k]);
+      ctx.fillStyle='#2c3742'; ctx.fill();
+      ctx.strokeStyle = isSelShape('aisle',k)?'#ffc857':'#46545f';
+      ctx.lineWidth = isSelShape('aisle',k)?2:1.2; ctx.stroke();
+    }
+    ctx.restore();
+    pathPoly(state.site);
+    ctx.lineWidth=isSelShape('site',0)?2.4:1.6;
+    ctx.strokeStyle=isSelShape('site',0)?'#ffc857':'#9fb2c2'; ctx.stroke();
+  }
+
+  if (state.shown){
+    ctx.lineWidth=1;
+    for (const sp of state.shown.stallsW){
+      pathPoly(sp);
+      ctx.fillStyle='#20272f'; ctx.fill(); // 緑地ベースを覆う不透明下地
+      ctx.fillStyle='rgba(127,209,232,.10)'; ctx.fill();
+      // 区画線は前面（車路側）が開いたコの字（sp[0][1]が前面）
+      const q=[sp[0],sp[3],sp[2],sp[1]].map(w2s);
+      ctx.beginPath();
+      ctx.moveTo(q[0].x,q[0].y);
+      for (let i=1;i<4;i++) ctx.lineTo(q[i].x,q[i].y);
+      ctx.strokeStyle='rgba(127,209,232,.85)'; ctx.stroke();
+    }
+  }
+  for (let k=0;k<state.obstacles.length;k++){
+    const ob=state.obstacles[k], selOb=isSelShape('obs',k);
+    pathPoly(ob);
+    ctx.fillStyle='#20272f';ctx.fill(); // 緑地ベースを覆う不透明下地
+    ctx.fillStyle='rgba(224,122,107,.16)';ctx.fill();
+    ctx.strokeStyle=selOb?'#ffc857':'#e07a6b';ctx.lineWidth=selOb?2:1;
+    ctx.setLineDash([5,3]);ctx.stroke();ctx.setLineDash([]);ctx.lineWidth=1;
+  }
+  // 手動車路 中心線
+  for (let k=0;k<state.aisles.length;k++){
+    const a=state.aisles[k];
+    pathPoly(a.pts,false);
+    ctx.strokeStyle=isSelShape('aisle',k)?'#ffc857':'rgba(160,180,195,.5)';
+    ctx.setLineDash([6,4]);ctx.lineWidth=isSelShape('aisle',k)?1.6:1;ctx.stroke();ctx.setLineDash([]);
+  }
+  // 作図中
+  if (state.drawing && state.drawing.pts.length){
+    const dKind=state.drawing.kind;
+    const dCol=dKind==='site'?'#ffc857':(dKind==='obs'?'#e07a6b':'#7fd1e8');
+    pathPoly(state.drawing.pts,false);
+    ctx.strokeStyle=dCol;
+    ctx.lineWidth=1.5;ctx.stroke();
+    for (const p of state.drawing.pts){
+      const q=w2s(p);
+      ctx.beginPath();ctx.arc(q.x,q.y,3.5,0,7);ctx.fillStyle='#ffc857';ctx.fill();
+    }
+    for (let i=0;i<state.drawing.pts.length-1;i++){
+      drawDimLabel(state.drawing.pts[i], state.drawing.pts[i+1], dCol);
+    }
+    if (state.hoverWorld && !state.dragging){
+      const last=state.drawing.pts[state.drawing.pts.length-1];
+      const hv=drawPoint(state.hoverWorld);
+      const q1=w2s(last), q2=w2s(hv);
+      ctx.beginPath();ctx.moveTo(q1.x,q1.y);ctx.lineTo(q2.x,q2.y);
+      ctx.setLineDash([5,4]); ctx.strokeStyle=dCol; ctx.lineWidth=1.3; ctx.stroke(); ctx.setLineDash([]);
+      drawDimLabel(last, hv, dCol);
+    }
+  }
+  // 編集ハンドル（頂点。辺への頂点追加は辺上ダブルクリック）
+  // 複数選択中は移動のみ可能のため頂点ハンドルを表示しない
+  if (state.tool==='edit' && !isMultiSel()){
+    for (const {list} of editTargets()){
+      const n=list.length;
+      for (let i=0;i<n;i++){
+        const q=w2s(list[i]);
+        const isSel = state.sel&&state.sel.type==='vertex'&&state.sel.list===list&&state.sel.idx===i;
+        ctx.beginPath();ctx.rect(q.x-3.5,q.y-3.5,7,7);
+        ctx.fillStyle=isSel?'#ffc857':'#14181d';ctx.fill();
+        ctx.strokeStyle=isSel?'#ffc857':'#9fb2c2';ctx.lineWidth=1;ctx.stroke();
+      }
+    }
+  }
+  // 頂点ドラッグ中: 長さの変わる隣接辺の中央に辺長を表示
+  if (state.dragging && state.dragging.kind==='vertex'){
+    const dg=state.dragging;
+    const t=editTargets().find(t=>t.list===dg.list);
+    if (t){
+      const col = t.kind==='site' ? '#ffc857' : t.kind==='obs' ? '#e07a6b' : '#7fd1e8';
+      const n=t.list.length, i=dg.idx;
+      if (t.closed || i>0) drawDimLabel(t.list[(i-1+n)%n], t.list[i], col);
+      if (t.closed || i<n-1) drawDimLabel(t.list[i], t.list[(i+1)%n], col);
+    }
+  }
+  // オブジェクトスナップマーカー（□:端点 △:中点）
+  if (state.snapHit && (state.drawing || state.calib ||
+      (state.dragging && state.dragging.kind==='vertex'))){
+    const q=w2s(state.snapHit.p);
+    ctx.save();
+    ctx.lineWidth=1.8; ctx.strokeStyle='#67e08f';
+    ctx.beginPath();
+    if (state.snapHit.kind==='end') ctx.rect(q.x-5.5,q.y-5.5,11,11);
+    else { ctx.moveTo(q.x,q.y-6.5); ctx.lineTo(q.x+6,q.y+4.5);
+           ctx.lineTo(q.x-6,q.y+4.5); ctx.closePath(); }
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawGrid(){
+  const s=state.view.s; if (s<1.2) return;
+  const w=cv.clientWidth,h=cv.clientHeight;
+  const p0=s2w({x:0,y:h}),p1=s2w({x:w,y:0});
+  ctx.lineWidth=1;
+  for (const [step,col] of [[1,'#191f26'],[5,'#222a33']]){
+    if (step*s<7) continue;
+    ctx.strokeStyle=col;ctx.beginPath();
+    for (let x=Math.floor(p0.x/step)*step;x<=p1.x;x+=step){const q=w2s({x,y:0});ctx.moveTo(q.x,0);ctx.lineTo(q.x,h);}
+    for (let y=Math.floor(p0.y/step)*step;y<=p1.y;y+=step){const q=w2s({x:0,y});ctx.moveTo(0,q.y);ctx.lineTo(w,q.y);}
+    ctx.stroke();
+  }
+}
+function drawUnderlay(){
+  const u=state.underlay;
+  if (!u||!u.visible) return;
+  ctx.save();
+  ctx.globalAlpha=u.opacity;
+  ctx.strokeStyle='#6a7d8d'; ctx.lineWidth=0.8;
+  for (const e of u.ents){
+    if (u.layers[e.layer]===false) continue;
+    ctx.beginPath();
+    e.pts.forEach((p0,i)=>{const q=w2s(uPt(p0)); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y);});
+    if (e.closed) ctx.closePath();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function editTargets(){
+  const out=[];
+  if (state.site) out.push({list:state.site, closed:true, min:3, kind:'site'});
+  for (const ob of state.obstacles) out.push({list:ob, closed:true, min:3, kind:'obs'});
+  for (const a of state.aisles) out.push({list:a.pts, closed:false, min:2, kind:'aisle'});
+  return out;
+}
+
+/* ---------- 図形選択（選択モード） ---------- */
+function isSelShape(kind,idx){
+  const s=state.sel;
+  return !!(s && s.type==='shape' && s.kind===kind && s.idxs.includes(idx));
+}
+function isMultiSel(){
+  return !!(state.sel && state.sel.type==='shape' && state.sel.idxs.length>1);
+}
+// クリック位置の図形を判定。車路=中心線・帯内、障害物=内部、敷地=境界近傍のみ
+function hitShape(sp){
+  const w=s2w(sp), tol=6/state.view.s;
+  for (let k=state.aisles.length-1;k>=0;k--){
+    const a=state.aisles[k];
+    for (let i=0;i<a.pts.length-1;i++)
+      if (distPtSeg(w,a.pts[i],a.pts[i+1])<tol) return {kind:'aisle',idx:k};
+    const co=corridorOf(a);
+    if (co && ptInPoly(w,co)) return {kind:'aisle',idx:k};
+  }
+  for (let k=state.obstacles.length-1;k>=0;k--)
+    if (ptInPoly(w,state.obstacles[k]) || distToPolyEdge(w,state.obstacles[k])<tol)
+      return {kind:'obs',idx:k};
+  if (state.site && distToPolyEdge(w,state.site)<tol) return {kind:'site',idx:0};
+  return null;
+}
+// 選択中図形の点列（移動対象）
+function selShapeLists(){
+  const s=state.sel;
+  if (!s || s.type!=='shape') return [];
+  if (s.kind==='site') return state.site ? [state.site] : [];
+  if (s.kind==='obs') return s.idxs.map(i=>state.obstacles[i]).filter(Boolean);
+  return s.idxs.map(i=>state.aisles[i]).filter(a=>a).map(a=>a.pts);
+}
+// 手動車路選択時: 左パネルの幅員欄へ反映
+function syncAisleWidthInput(){
+  const s=state.sel;
+  if (s && s.type==='shape' && s.kind==='aisle' && s.idxs.length){
+    const a=state.aisles[s.idxs[0]];
+    if (a) $('pAisleM').value=aisleWidth(a).toFixed(1);
+  }
+}
+function deleteSelShapes(){
+  const s=state.sel;
+  if (!s || s.type!=='shape') return;
+  if (s.kind==='site'){
+    state.site=null; state.shown=null; state.result=null;
+    $('kCount').textContent='–';
+    $('altList').innerHTML='<p class="hint">生成後に方向別の比較案が表示されます。</p>';
+  } else if (s.kind==='obs'){
+    state.obstacles=state.obstacles.filter((_,i)=>!s.idxs.includes(i));
+  } else {
+    state.aisles=state.aisles.filter((_,i)=>!s.idxs.includes(i));
+  }
+  state.sel=null;
+  updateCounts(); scheduleRun(); draw();
+}
+
+/* ---------- 生成・結果表示 ---------- */
+let calcToken=0;
+function run(quick){
+  if (!state.site||state.site.length<3){ setMsg('先に敷地を入力してください'); return; }
+  const prm=readParams();
+  const corridors=allCorridors();
+  checkObstacleWarn(corridors);
+  const token=++calcToken;
+  const go=()=>{
+    if (token!==calcToken) return;
+    const res=generateA(state.site,state.obstacles,corridors,prm);
+    state.result=res; state.shown=res.best;
+    finishA(state.shown, state.site, state.obstacles, corridors, prm);
+    renderResults(prm,corridors);
+    draw();
+    setMsg(`生成完了：${state.shown.count}台（${state.result.tried}案 / ${state.result.ms}ms）`);
+  };
+  if (quick) go(); else { setMsg('計算中…'); setTimeout(go,10); }
+}
+function computeAreas(prm,corridors){
+  // 0.5mグリッドの決定論的サンプリングで参考面積を算出（各セルを排他的に分類）
+  // 「余り」は連結成分に分解し、外周緑化帯とつながる成分のみ緑地。
+  // 孤立した島（車路・車室に囲まれた取り残し）は舗装として車路面積に算入する。
+  const site=state.site, bb=bbox(site), step=0.5, cell=step*step;
+  const shown=state.shown;
+  const stallPolys = shown ? shown.stallsW : [];
+  const nx=Math.max(1,Math.ceil((bb.x1-bb.x0)/step-0.5));
+  const ny=Math.max(1,Math.ceil((bb.y1-bb.y0)/step-0.5));
+  const px=ix=>bb.x0+step/2+ix*step, py=iy=>bb.y0+step/2+iy*step;
+  // 分類コード: 0=敷地外 1=障害物 2=緑化帯 3=舗装(車路) 4=車室 5=余り
+  const cls=new Uint8Array(nx*ny);
+  for (let ix=0;ix<nx;ix++) for (let iy=0;iy<ny;iy++){
+    const p={x:px(ix), y:py(iy)};
+    if (!ptInPoly(p,site)) continue;
+    const idx=ix*ny+iy;
+    let inObstacle=false;
+    for (const ob of state.obstacles) if (ptInPoly(p,ob)){inObstacle=true;break;}
+    if (inObstacle){ cls[idx]=1; continue; }
+    const dEdge=distToPolyEdge(p,site);
+    let inCo=false;
+    for (const co of corridors){ if (ptInPoly(p,co)){inCo=true;break;} }
+    if (dEdge<prm.green){ cls[idx]=inCo?3:2; continue; }
+    if (inCo){ cls[idx]=3; continue; }
+    let inStall=false;
+    for (const sp of stallPolys) if (ptInPoly(p,sp)){inStall=true;break;}
+    if (inStall){ cls[idx]=4; continue; } // 外周車室は車路より先に判定
+    if (perimeterMode(prm)==='stall' && dEdge<prm.green+prm.stallD){ cls[idx]=2; continue; } // 車室帯の余白は緑地
+    if (prm.ring && dEdge<prm.green+perimeterDepth(prm)){ cls[idx]=3; continue; } // 外周車路
+    if (shown && shown.frame){
+      const {c,th}=shown.frame;
+      const q=rot(p,c,-th);
+      let inBand=false;
+      for (const b of shown.bands){ if (q.y>=b.y0&&q.y<=b.y1&&q.x>=b.x0&&q.x<=b.x1){inBand=true;break;} }
+      if (inBand){ cls[idx]=3; continue; }
+      if (shown.cutsW){
+        let inCut=false;
+        for (const tri of shown.cutsW) if (ptInPoly(p,tri)){inCut=true;break;}
+        if (inCut){ cls[idx]=3; continue; } // 隅切りも車路扱い
+      }
+    }
+    cls[idx]=5;
+  }
+  let green=0, aisle=0, obstacleA=0, stallA=0;
+  for (let i=0;i<nx*ny;i++){
+    if (cls[i]===1) obstacleA+=cell;
+    else if (cls[i]===2) green+=cell;
+    else if (cls[i]===3) aisle+=cell;
+    else if (cls[i]===4) stallA+=cell;
+  }
+  // 余りセルをフラッドフィルで連結成分に分解。
+  // 緑地として残す条件: 外周緑化帯に接する、またはまとまった面積を持つ（植栽帯として有意）。
+  // どちらも満たさない細かい切れ端（島状の取り残し）のみ舗装として車路面積に算入する。
+  const GREEN_ISLAND_MIN = 5; // ㎡。これ未満の孤立した余りは舗装扱い
+  const greenCells=[]; let islandA=0;
+  const seen=new Uint8Array(nx*ny), stack=[];
+  for (let i0=0;i0<nx*ny;i0++){
+    if (cls[i0]!==5 || seen[i0]) continue;
+    const comp=[]; let touchesBelt=false;
+    seen[i0]=1; stack.length=0; stack.push(i0);
+    while (stack.length){
+      const j=stack.pop(); comp.push(j);
+      const ix=(j/ny)|0, iy=j%ny;
+      const nb=[];
+      if (ix>0) nb.push(j-ny); if (ix<nx-1) nb.push(j+ny);
+      if (iy>0) nb.push(j-1); if (iy<ny-1) nb.push(j+1);
+      for (const k of nb){
+        if (cls[k]===2) touchesBelt=true;
+        else if (cls[k]===5 && !seen[k]){ seen[k]=1; stack.push(k); }
+      }
+    }
+    if (touchesBelt || comp.length*cell >= GREEN_ISLAND_MIN){
+      green+=comp.length*cell;
+      for (const j of comp) greenCells.push({x:px((j/ny)|0), y:py(j%ny)});
+    } else {
+      aisle+=comp.length*cell; islandA+=comp.length*cell; // 細かい切れ端は舗装（車路面積に算入）
+    }
+  }
+  return {green,aisle,obstacleA,stallA,islandA,greenCells,step};
+}
+function renderResults(prm,corridors){
+  const res=state.result; if(!res) return;
+  const area=polyAreaAbs(state.site), shown=state.shown;
+  const ca=computeAreas(prm,corridors||allCorridors());
+  const {green,aisle,obstacleA}=ca;
+  // 緑地として残す「余り」セルを世界座標のPath2Dにまとめて保持（draw()で舗装ベースの上に塗る）
+  // セルは半歩+αだけ拡大し、後描きのベクタ塗り（車路帯・車室等）が縁を整える
+  const h=ca.step*0.9;
+  state.greenPath=new Path2D();
+  for (const p of ca.greenCells) state.greenPath.rect(p.x-h, p.y-h, h*2, h*2);
+  $('kCount').innerHTML=shown.count+'<span class="numUnit">台</span>';
+  $('kArea').textContent=area.toFixed(1)+' ㎡';
+  $('kUnit').textContent=shown.count?(area/shown.count).toFixed(1):'–';
+  $('kStall').textContent=(shown.count*prm.stallW*prm.stallD).toFixed(1)+' ㎡';
+  $('kAisleA').textContent=aisle.toFixed(0)+' ㎡';
+  $('kObstacle').textContent=obstacleA.toFixed(0)+' ㎡';
+  $('kGreen').textContent=green.toFixed(0)+' ㎡ / '+(green/area*100).toFixed(1)+'%';
+  $('kTheta').textContent=shown.theta.toFixed(1)+'°／駐車角'+prm.angle+'°';
+  $('kTried').textContent=res.tried+' 案 / '+res.ms+' ms';
+  const list=$('altList'); list.innerHTML='';
+  res.perTheta.forEach(r=>{
+    const div=document.createElement('div');
+    div.className='alt'+(r===state.shown?' sel':'');
+    div.innerHTML=`<span class="c">${r.count}台</span> <span class="d">方向 ${r.theta.toFixed(1)}°</span>`;
+    div.onclick=()=>{finishA(r,state.site,state.obstacles,corridors||allCorridors(),prm);state.shown=r;renderResults(prm,corridors);draw();};
+    list.appendChild(div);
+  });
+}
+function checkObstacleWarn(corridors){
+  let hit=false;
+  outer:
+  for (const ob of state.obstacles){
+    for (const co of corridors){
+      for (const p of samplePts(ob)) if (ptInPoly(p,co)){hit=true;break outer;}
+      for (const v of co) if (ptInPoly(v,ob)){hit=true;break outer;}
+    }
+  }
+  const w=$('warn');
+  w.style.display=hit?'block':'none';
+  if (hit) w.textContent='⚠ 障害物と手動車路が干渉しています（形状を確認してください）';
+}
+function setMsg(t){$('msgText').textContent=t;}
+function setModeBadge(t){$('msgMode').textContent=t?`【${t}】`:'';}
+
+/* ---------- スナップ ---------- */
+// オブジェクトスナップ: 下図・既存図形・作図中図形の端点(□)／中点(△)へ吸着。
+// exclude はドラッグ中の頂点（自分自身とその隣接辺の中点へは吸着しない）
+function findSnap(w, exclude){
+  const tol=9/state.view.s;
+  let end=null, de=tol, mid=null, dm=tol;
+  const seeEnd=p=>{ const d=Math.hypot(p.x-w.x,p.y-w.y); if (d<de){de=d;end=p;} };
+  const seeMid=(a,b)=>{
+    const p={x:(a.x+b.x)/2, y:(a.y+b.y)/2};
+    const d=Math.hypot(p.x-w.x,p.y-w.y); if (d<dm){dm=d;mid=p;}
+  };
+  const seePoly=(pts,closed)=>{
+    const n=pts.length;
+    for (let i=0;i<n;i++) if (pts[i]!==exclude) seeEnd(pts[i]);
+    const segN=closed?n:n-1;
+    for (let i=0;i<segN;i++){
+      const a=pts[i], b=pts[(i+1)%n];
+      if (a!==exclude && b!==exclude) seeMid(a,b);
+    }
+  };
+  if (state.site) seePoly(state.site,true);
+  for (const ob of state.obstacles) seePoly(ob,true);
+  for (const a of state.aisles) seePoly(a.pts,false);
+  if (state.drawing) seePoly(state.drawing.pts,false);
+  const u=state.underlay;
+  if (u&&u.visible){
+    for (const e of u.ents){
+      if (u.layers[e.layer]===false) continue;
+      for (const p0 of e.pts) seeEnd(uPt(p0));
+      if (e.pts.length===2) seeMid(uPt(e.pts[0]), uPt(e.pts[1])); // 中点は単一線分のみ（円弧分割点は除外）
+    }
+  }
+  return end ? {p:{x:end.x,y:end.y}, kind:'end'}
+       : mid ? {p:mid, kind:'mid'} : null;
+}
+function snap(w, exclude){
+  const hit=findSnap(w, exclude);
+  state.snapHit=hit;
+  if (hit) return {x:hit.p.x, y:hit.p.y};
+  return {x:Math.round(w.x*10)/10, y:Math.round(w.y*10)/10};
+}
+// 直交モード（Shift）: 基準点 ref から水平または垂直に拘束。
+// 拘束軸は ref と同値を保ち、自由軸のみ0.1m丸め。ref がなければ通常スナップ。
+function applySnap(w, ref, exclude){
+  if (state.ortho && ref){
+    state.snapHit=null;
+    const dx=Math.abs(w.x-ref.x), dy=Math.abs(w.y-ref.y);
+    return dx>=dy ? {x:Math.round(w.x*10)/10, y:ref.y}
+                  : {x:ref.x, y:Math.round(w.y*10)/10};
+  }
+  return snap(w, exclude);
+}
+// 作図時の実効入力点（直前の点を直交基準とする）
+function drawPoint(w){
+  const pts=state.drawing ? state.drawing.pts : null;
+  const ref=(pts && pts.length) ? pts[pts.length-1] : null;
+  return applySnap(w, ref);
+}
+
+/* ---------- 入力操作 ---------- */
+function setTool(m){
+  state.tool=m;
+  state.drawing=(m==='site')?{kind:'site',pts:[]}:(m==='obs')?{kind:'obs',pts:[]}:(m==='aisle')?{kind:'aisle',pts:[]}:null;
+  state.calib=null;
+  if (m!=='edit') state.lastDrawTool=m;
+  const isEdit=(m==='edit');
+  // 作図セレクタ（敷地／障害物／手動車路）と編集ボタンの状態
+  const drawTool = isEdit ? (state.lastDrawTool||'site') : m;
+  $('selDraw').value = drawTool;
+  $('drawSel').classList.toggle('active',!isEdit);
+  $('mEdit').classList.toggle('active',isEdit);
+  cv.classList.toggle('mode-edit',isEdit);
+  const msgs={site:'クリックで頂点追加。始点クリック／ダブルクリック／Enterで閉合（□:端点 △:中点にスナップ／Shift:水平垂直／Esc:中止）',
+    obs:'障害物ポリゴンを作図。閉合で配置不可領域になります（□:端点 △:中点にスナップ／Shift:水平垂直／Esc:中止）',
+    aisle:'車路の中心線をクリックで入力。ダブルクリック／Enterで確定（□:端点 △:中点にスナップ／Shift:水平垂直／Esc:中止）',
+    edit:'図形クリック=選択・ドラッグ=移動／Shift+クリック=同種を複数選択（移動のみ）／Delete=削除／頂点ドラッグ=移動／辺ダブルクリック=頂点追加'};
+  const badges={site:'敷地作図',obs:'障害物作図',aisle:'手動車路作図',edit:'選択'};
+  setMsg(msgs[m]||'');
+  setModeBadge(badges[m]||'');
+  draw();
+}
+function closeDrawing(){
+  const d=state.drawing; if(!d) return;
+  if (d.kind==='aisle'){
+    if (d.pts.length<2) return;
+    state.aisles.push({pts:d.pts, width:+$('pAisleM').value});
+    state.drawing={kind:'aisle',pts:[]};
+    updateCounts(); scheduleRun(); return;
+  }
+  if (d.pts.length<3) return;
+  if (d.kind==='site') state.site=d.pts;
+  else state.obstacles.push(d.pts);
+  state.drawing={kind:d.kind,pts:[]};
+  updateCounts(); scheduleRun();
+}
+cv.addEventListener('mousedown',e=>{
+  const sp={x:e.offsetX,y:e.offsetY};
+  if (e.button===1){
+    e.preventDefault();
+    state.dragging={kind:'pan',sx:sp.x,sy:sp.y,ox:state.view.ox,oy:state.view.oy};
+    return;
+  }
+  if (state.calib){ handleCalibClick(sp); return; }
+  if (state.tool!=='edit') return;
+  const hit=hitShape(sp);
+  // Shift+クリック: 同種図形の複数選択（トグル）。複数選択中は移動のみ可能
+  if (e.shiftKey){
+    if (hit){
+      const s=state.sel;
+      if (s && s.type==='shape' && s.kind===hit.kind){
+        const i=s.idxs.indexOf(hit.idx);
+        if (i>=0) s.idxs.splice(i,1); else s.idxs.push(hit.idx);
+        if (!s.idxs.length) state.sel=null;
+      } else {
+        state.sel={type:'shape',kind:hit.kind,idxs:[hit.idx]};
+      }
+      syncAisleWidthInput(); draw();
+    }
+    return;
+  }
+  const tol=8;
+  // 頂点（複数選択中は頂点編集不可）
+  if (!isMultiSel()){
+    for (const t of editTargets()){
+      for (let i=0;i<t.list.length;i++){
+        const q=w2s(t.list[i]);
+        if (Math.hypot(q.x-sp.x,q.y-sp.y)<tol){
+          state.sel={type:'vertex',list:t.list,idx:i,min:t.min};
+          state.dragging={kind:'vertex',list:t.list,idx:i,
+            ref:{x:t.list[i].x,y:t.list[i].y}}; // 直交モードの基準=ドラッグ開始位置
+          draw(); return;
+        }
+      }
+    }
+  }
+  // 図形選択＋移動ドラッグ開始（選択済み図形をクリックした場合は選択を維持して一括移動）
+  if (hit){
+    if (!isSelShape(hit.kind,hit.idx))
+      state.sel={type:'shape',kind:hit.kind,idxs:[hit.idx]};
+    syncAisleWidthInput();
+    const lists=selShapeLists();
+    state.dragging={kind:'move', w0:s2w(sp), lists,
+      orig:lists.map(l=>l.map(p=>({x:p.x,y:p.y}))), moved:false};
+    draw(); return;
+  }
+  state.sel=null;
+  state.dragging={kind:'pan',sx:sp.x,sy:sp.y,ox:state.view.ox,oy:state.view.oy};
+  draw();
+});
+cv.addEventListener('mousemove',e=>{
+  const sp={x:e.offsetX,y:e.offsetY};
+  state.hoverWorld=s2w(sp);
+  state.ortho=e.shiftKey;
+  const d=state.dragging;
+  if (d){
+    if (d.kind==='vertex'){
+      const w=applySnap(state.hoverWorld, d.ref, d.list[d.idx]);
+      d.list[d.idx].x=w.x; d.list[d.idx].y=w.y;
+    } else if (d.kind==='move'){
+      const w=s2w(sp);
+      const dx=Math.round((w.x-d.w0.x)*10)/10, dy=Math.round((w.y-d.w0.y)*10)/10;
+      d.lists.forEach((list,li)=>list.forEach((p,pi)=>{
+        p.x=d.orig[li][pi].x+dx; p.y=d.orig[li][pi].y+dy;
+      }));
+      d.moved = d.moved || dx!==0 || dy!==0;
+      state.snapHit=null;
+    } else {
+      state.view.ox=d.ox+(sp.x-d.sx);
+      state.view.oy=d.oy+(sp.y-d.sy);
+      state.snapHit=null;
+    }
+    draw();
+    return;
+  }
+  if (state.drawing || state.calib){
+    const prev=state.snapHit;
+    if (state.calib) snap(state.hoverWorld); else drawPoint(state.hoverWorld);
+    const cur=state.snapHit;
+    const changed = (!!prev !== !!cur) ||
+      (prev && cur && (prev.p.x!==cur.p.x || prev.p.y!==cur.p.y || prev.kind!==cur.kind));
+    if ((state.drawing && state.drawing.pts.length) || changed) draw();
+  }
+});
+cv.addEventListener('mouseleave',()=>{
+  if (state.snapHit){ state.snapHit=null; draw(); }
+});
+window.addEventListener('mouseup',()=>{
+  const d=state.dragging;
+  if (d && d.kind==='vertex'){
+    const p=d.list[d.idx];
+    // 実際に頂点が動いた場合のみ再配置（掴んで離しただけでは不要）
+    if (!d.ref || p.x!==d.ref.x || p.y!==d.ref.y) scheduleRun();
+  }
+  if (d && d.kind==='move' && d.moved) scheduleRun();
+  state.dragging=null;
+});
+cv.addEventListener('click',e=>{
+  if (state.calib) return;
+  if (!state.drawing) return;
+  state.ortho=e.shiftKey;
+  const w=drawPoint(s2w({x:e.offsetX,y:e.offsetY}));
+  const pts=state.drawing.pts;
+  if (state.drawing.kind!=='aisle' && pts.length>=3){
+    const q0=w2s(pts[0]);
+    if (Math.hypot(q0.x-e.offsetX,q0.y-e.offsetY)<10){closeDrawing();return;}
+  }
+  pts.push(w); draw();
+});
+cv.addEventListener('dblclick',e=>{
+  e.preventDefault();
+  if (state.drawing){ closeDrawing(); return; }
+  if (state.tool==='edit'){
+    if (isMultiSel()) return; // 複数選択中は頂点編集不可
+    // 辺上の任意の場所をダブルクリック → その位置（辺上に投影）に頂点を追加・選択
+    const w=s2w({x:e.offsetX,y:e.offsetY});
+    for (const t of editTargets()){
+      const n=t.list.length, segN=t.closed?n:n-1;
+      for (let i=0;i<segN;i++){
+        const a=t.list[i], b=t.list[(i+1)%n];
+        if (distPtSeg(w,a,b)*state.view.s<6){
+          const L2=(b.x-a.x)**2+(b.y-a.y)**2;
+          let tt=L2>EPS ? ((w.x-a.x)*(b.x-a.x)+(w.y-a.y)*(b.y-a.y))/L2 : 0;
+          tt=Math.max(0,Math.min(1,tt));
+          const p={x:a.x+(b.x-a.x)*tt, y:a.y+(b.y-a.y)*tt};
+          t.list.splice(i+1,0,p);
+          state.sel={type:'vertex',list:t.list,idx:i+1,min:t.min};
+          // 追加のみでは形状不変のため再配置しない（移動時のmouseupで再配置）
+          draw(); return;
+        }
+      }
+    }
+  }
+});
+cv.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  if (state.tool!=='edit' || isMultiSel()) return;
+  const sp={x:e.offsetX,y:e.offsetY};
+  for (const t of editTargets()){
+    for (let i=0;i<t.list.length;i++){
+      const q=w2s(t.list[i]);
+      if (Math.hypot(q.x-sp.x,q.y-sp.y)<8){ deleteVertex(t.list,i,t.min); return; }
+    }
+  }
+});
+window.addEventListener('keydown',e=>{
+  if (e.key==='Shift' && !state.ortho){
+    state.ortho=true;
+    if (state.drawing || (state.dragging&&state.dragging.kind==='vertex')) draw();
+    return;
+  }
+  if (e.key==='Escape'){
+    if (state.drawing) state.drawing.pts=[];
+    state.calib=null; state.sel=null; draw(); return;
+  }
+  if (e.key==='Enter'&&state.drawing){closeDrawing();return;}
+  if ((e.key==='Delete'||e.key==='Backspace')&&state.sel){
+    if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    e.preventDefault();
+    if (state.sel.type==='vertex') deleteVertex(state.sel.list,state.sel.idx,state.sel.min);
+    else if (state.sel.type==='shape') deleteSelShapes();
+  }
+});
+window.addEventListener('keyup',e=>{
+  if (e.key==='Shift' && state.ortho){
+    state.ortho=false;
+    if (state.drawing || (state.dragging&&state.dragging.kind==='vertex')) draw();
+  }
+});
+function deleteVertex(list,idx,min){
+  if (list.length<=min){ setMsg(`頂点数の下限（${min}）のため削除できません`); return; }
+  list.splice(idx,1);
+  state.sel=null;
+  scheduleRun(); draw();
+}
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const f=e.deltaY<0?1.12:1/1.12;
+  const w=s2w({x:e.offsetX,y:e.offsetY});
+  state.view.s*=f;
+  state.view.ox=e.offsetX-w.x*state.view.s;
+  state.view.oy=e.offsetY+w.y*state.view.s;
+  draw();
+},{passive:false});
+
+/* ---------- 手動車路 幅員（左パネル） ---------- */
+// 未選択時: 新規作図のデフォルト幅員。手動車路選択中: 選択車路の幅員を変更
+$('pAisleM').addEventListener('change',()=>{
+  const s=state.sel;
+  if (s && s.type==='shape' && s.kind==='aisle'){
+    const v=+$('pAisleM').value;
+    for (const i of s.idxs){ if (state.aisles[i]) state.aisles[i].width=v; }
+    scheduleRun(); draw();
+  }
+});
+
+/* ---------- パラメータ ---------- */
+let timer=null;
+function scheduleRun(){ if(!state.site)return; clearTimeout(timer); timer=setTimeout(()=>run(false),180); }
+['pW','pD','pAngle','pGreen','pPerimeter','pAisle'].forEach(id=>$(id).addEventListener('change',scheduleRun));
+$('pAutoDir').addEventListener('change',()=>{
+  const auto=$('pAutoDir').checked;
+  $('pDir').disabled=auto; $('pDirSlider').disabled=auto;
+  if (!auto&&state.result&&state.result.best&&state.mode==='A'){
+    const t=Math.round(state.result.best.theta);
+    $('pDir').value=t; $('pDirSlider').value=t;
+  }
+  scheduleRun();
+});
+// リアルタイム角度（θ固定なので即時実行）
+let rafPending=false;
+function realtimeDir(v){
+  $('pDir').value=v; $('pDirSlider').value=v;
+  if (rafPending) return;
+  rafPending=true;
+  requestAnimationFrame(()=>{ rafPending=false; run(true); });
+}
+$('pDirSlider').addEventListener('input',e=>realtimeDir(+e.target.value));
+$('pDir').addEventListener('input',e=>realtimeDir(+e.target.value));
+$('btnRun').onclick=()=>run(false);
+
+/* ---------- ツールバー・プリセット ---------- */
+$('selDraw').addEventListener('change',e=>setTool(e.target.value));
+// 編集中にセレクタを押したら、表示中の対象で作図モードへ戻す（同じ値の選択でも復帰）
+$('selDraw').addEventListener('mousedown',()=>{ if(state.tool==='edit') setTool($('selDraw').value); });
+$('mEdit').onclick=()=>setTool('edit');
+$('tFit').onclick=fitView;
+function updateCounts(){}
+$('btnClear').onclick=()=>{
+  state.site=null;state.obstacles=[];state.aisles=[];state.shown=null;state.result=null;state.sel=null;
+  clearUnderlay();
+  $('kCount').textContent='–';$('altList').innerHTML='<p class="hint">生成後に方向別の比較案が表示されます。</p>';
+  setMsg('すべて消去しました（敷地・障害物・車路・下図）');
+  draw();
+};
+function setSite(pts){state.site=pts;state.obstacles=[];state.aisles=[];state.shown=null;updateCounts();fitView();run(false);}
+
+/* ---------- DXF下図 ---------- */
+$('btnDxfLoad').onclick=()=>$('fileDxf').click();
+$('fileDxf').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>loadDxfText(r.result,f.name);
+  r.readAsText(f);
+  e.target.value='';
+});
+cv.addEventListener('dragover',e=>e.preventDefault());
+cv.addEventListener('drop',e=>{
+  e.preventDefault();
+  const f=e.dataTransfer.files[0];
+  if (f&&/\.dxf$/i.test(f.name)){
+    const r=new FileReader();
+    r.onload=()=>loadDxfText(r.result,f.name);
+    r.readAsText(f);
+  }
+});
+function loadDxfText(text,name){
+  let parsed;
+  try{ parsed=parseDxf(text); }
+  catch(err){ setMsg('DXFの解析に失敗しました: '+err.message); return; }
+  if (!parsed.ents.length){ setMsg('対応エンティティ（LINE/POLYLINE/ARC/CIRCLE）が見つかりません。バイナリDXFの可能性があります'); return; }
+  // 単位: $INSUNITS 4=mm,5=cm,6=m,1=inch → scale
+  const unitMap={1:0.0254,2:0.3048,4:0.001,5:0.01,6:1};
+  const scale=unitMap[parsed.insunits]||0.001; // 既定mm
+  // スナップ点
+  const snapPts=[];
+  for (const e2 of parsed.ents) for (const p of e2.pts) snapPts.push(p);
+  // 原点付近へ自動フィット
+  const bb=bbox(parsed.ents.flatMap(e2=>e2.pts));
+  const off={x:-bb.x0*scale, y:-bb.y0*scale};
+  const layers={};
+  for (const e2 of parsed.ents) layers[e2.layer]=true;
+  state.underlay={ents:parsed.ents,snapPts,scale,off,visible:true,opacity:0.55,layers};
+  ['uVisible','uOpacity','uUnit','btnCalib','btnDxfClear'].forEach(id=>$(id).disabled=false);
+  $('uUnit').value=String(scale);
+  renderLayerList();
+  const skipInfo=Object.entries(parsed.skipped).map(([k,v])=>`${k}×${v}`).join(', ');
+  setMsg(`下図読込: ${name}（${parsed.ents.length}要素${skipInfo?'／読み飛ばし: '+skipInfo:''}）`);
+  fitView();
+}
+function renderLayerList(){
+  const u=state.underlay, div=$('layerList');
+  div.innerHTML='';
+  Object.keys(u.layers).sort().forEach(name=>{
+    const row=document.createElement('div');row.className='row';
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=u.layers[name];
+    cb.onchange=()=>{u.layers[name]=cb.checked;draw();};
+    const lb=document.createElement('label');lb.textContent=name;lb.style.flex='1';
+    row.append(cb,lb);div.appendChild(row);
+  });
+}
+function clearUnderlay(){
+  if (!state.underlay) return false;
+  state.underlay=null;
+  state.calib=null;
+  ['uVisible','uOpacity','uUnit','btnCalib','btnDxfClear'].forEach(id=>$(id).disabled=true);
+  $('uVisible').checked=true;
+  $('uOpacity').value=55;
+  $('layerList').innerHTML='';
+  return true;
+}
+$('btnDxfClear').onclick=()=>{
+  if (clearUnderlay()){ setMsg('下図（DXF）をクリアしました'); draw(); }
+};
+$('uVisible').addEventListener('change',()=>{state.underlay.visible=$('uVisible').checked;draw();});
+$('uOpacity').addEventListener('input',()=>{state.underlay.opacity=+$('uOpacity').value/100;draw();});
+$('uUnit').addEventListener('change',()=>{
+  const u=state.underlay, old=u.scale, nu=+$('uUnit').value;
+  u.off.x=u.off.x/old*nu; u.off.y=u.off.y/old*nu;
+  u.scale=nu; fitView();
+});
+// 2点校正
+$('btnCalib').onclick=()=>{
+  state.calib={stage:0,p1:null};
+  setMsg('校正: 下図上の1点目をクリックしてください（スナップ有効）');
+};
+function handleCalibClick(sp){
+  const w=snap(s2w(sp));
+  if (state.calib.stage===0){
+    state.calib.p1=w; state.calib.stage=1;
+    setMsg('校正: 2点目をクリックしてください');
+  } else {
+    const p1=state.calib.p1, d=Math.hypot(w.x-p1.x,w.y-p1.y);
+    const real=parseFloat(prompt(`2点間の実距離を入力してください（m）\n現在の距離: ${d.toFixed(3)} m`,''));
+    state.calib=null;
+    if (!isFinite(real)||real<=0||d<EPS){ setMsg('校正を中止しました'); return; }
+    const f=real/d, u=state.underlay;
+    u.scale*=f; u.off.x=p1.x+(u.off.x-p1.x)*f; u.off.y=p1.y+(u.off.y-p1.y)*f;
+    setMsg(`校正完了: 倍率 ×${f.toFixed(5)} を適用しました`);
+    if (state.site) setMsg('校正完了（注意: 作図済み形状は再スケールされません）');
+    fitView();
+  }
+}
+
+/* ---------- 書き出し ---------- */
+function download(name,text,type='text/plain'){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type}));
+  a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+$('btnDxf').onclick=()=>{
+  if (!state.shown){setMsg('先にレイアウトを生成してください');return;}
+  const prm=readParams();
+  const model=buildExportModel(state.site, state.obstacles, allCorridors(),
+    state.shown, prm, state.mode);
+  const sb=bbox(state.site);
+  model.annotation={pos:{x:sb.x0,y:sb.y1+2},
+    text:`PARKING STALLS: ${state.shown.count}  (${(polyAreaAbs(state.site)/Math.max(state.shown.count,1)).toFixed(1)} m2/stall)`};
+  const uf=+$('pExpUnit').value;
+  download('parking_layout.dxf', buildDxf(model,uf), 'application/dxf');
+  setMsg(`DXF出力（単位: ${uf===1000?'mm':'m'}）`);
+};
+$('btnPng').onclick=()=>{
+  const a=document.createElement('a');
+  a.href=cv.toDataURL('image/png');a.download='parking_layout.png';a.click();
+};
+$('btnSave').onclick=()=>{
+  download('parking_study.json',JSON.stringify({
+    version:1,
+    params:{stallW:+$('pW').value,stallD:+$('pD').value,angle:+$('pAngle').value,
+      aisle:+$('pAisle').value,aisleM:+$('pAisleM').value,
+      perimeter:$('pPerimeter').value,green:+$('pGreen').value,
+      autoDir:$('pAutoDir').checked,dir:+$('pDir').value,expUnit:+$('pExpUnit').value},
+    site:state.site, obstacles:state.obstacles, aisles:state.aisles,
+  },null,1),'application/json');
+};
+$('btnLoad').onclick=()=>$('fileJson').click();
+$('fileJson').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      const p=d.params||{};
+      $('pW').value=p.stallW??2.5; $('pD').value=p.stallD??5.0;
+      $('pAngle').value=p.angle??90; $('pAisle').value=p.aisle??6.0;
+      $('pAisleM').value=p.aisleM??6.0;
+      $('pPerimeter').value=p.perimeter??((p.ring??true)?'ring':'none'); $('pGreen').value=p.green??1.0;
+      $('pAutoDir').checked=p.autoDir??true; $('pDir').value=p.dir??0; $('pDirSlider').value=p.dir??0;
+      $('pDir').disabled=$('pAutoDir').checked; $('pDirSlider').disabled=$('pAutoDir').checked;
+      $('pExpUnit').value=p.expUnit??1000;
+      state.site=d.site||null; state.obstacles=d.obstacles||[]; state.aisles=d.aisles||[];
+      updateCounts(); fitView(); run(false);
+      setMsg('検討状態を読み込みました（下図は再読込してください）');
+    }catch(err){ setMsg('JSONの読み込みに失敗: '+err.message); }
+  };
+  r.readAsText(f);
+  e.target.value='';
+});
+
+/* ---------- init ---------- */
+window.addEventListener('resize',draw);
+updateCounts();
+setTool('site');
+</script>
+</body>
+</html>
