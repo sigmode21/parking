@@ -134,8 +134,8 @@ h2.rh{font-size:11px;letter-spacing:.12em;color:var(--ink-dim);border-bottom:1px
 
   <div class="sec">
     <h2>車室</h2>
-    <div class="row"><label>車室幅</label><input type="number" id="pW" value="2.5" step="0.1" min="1.5"><span class="unit">m</span></div>
-    <div class="row"><label>車室奥行</label><input type="number" id="pD" value="5.0" step="0.1" min="3.0"><span class="unit">m</span></div>
+    <div class="row"><label>車室幅</label><input type="number" id="pW" value="2.5" step="0.1" min="1.5" max="5"><span class="unit">m</span></div>
+    <div class="row"><label>車室奥行</label><input type="number" id="pD" value="5.0" step="0.1" min="3.0" max="15"><span class="unit">m</span></div>
     <div class="row"><label>駐車角度</label>
       <select id="pAngle" style="width:92px">
         <option value="90">90°直角</option><option value="60">60°斜め</option><option value="45">45°斜め</option>
@@ -144,7 +144,7 @@ h2.rh{font-size:11px;letter-spacing:.12em;color:var(--ink-dim);border-bottom:1px
 
   <div class="sec" id="secAisleA">
     <h2>車路（自動帯）</h2>
-    <div class="row"><label>車路幅</label><input type="number" id="pAisle" value="6.0" step="0.1" min="2.5"><span class="unit">m</span></div>
+    <div class="row"><label>車路幅</label><input type="number" id="pAisle" value="6.0" step="0.1" min="2.5" max="30"><span class="unit">m</span></div>
     <div class="row"><label>外周部の扱い</label>
       <select id="pPerimeter" style="width:110px">
         <option value="ring">外周車路</option>
@@ -156,13 +156,13 @@ h2.rh{font-size:11px;letter-spacing:.12em;color:var(--ink-dim);border-bottom:1px
 
   <div class="sec" id="secAisleM">
     <h2>手動車路</h2>
-    <div class="row"><label>幅員</label><input type="number" id="pAisleM" value="6.0" step="0.1" min="2.5"><span class="unit">m</span></div>
+    <div class="row"><label>幅員</label><input type="number" id="pAisleM" value="6.0" step="0.1" min="2.5" max="30"><span class="unit">m</span></div>
     <p class="hint">作図する手動車路の幅員。選択モードで手動車路を選ぶと、その車路の幅員がここに表示され、値を変更すると図に反映されます。</p>
   </div>
 
   <div class="sec">
     <h2>外周緑化帯</h2>
-    <div class="row"><label>緑化幅（0で無効）</label><input type="number" id="pGreen" value="1.0" step="0.1" min="0"><span class="unit">m</span></div>
+    <div class="row"><label>緑化幅（0で無効）</label><input type="number" id="pGreen" value="1.0" step="0.1" min="0" max="30"><span class="unit">m</span></div>
     <p class="hint">敷地境界の内側全周に自動生成。手動車路が横断する部分は自動で切り欠かれます。</p>
   </div>
 
@@ -209,6 +209,9 @@ h2.rh{font-size:11px;letter-spacing:.12em;color:var(--ink-dim);border-bottom:1px
       </select>
     </div>
     <button id="mEdit">選択</button>
+    <div class="tbSep"></div>
+    <button id="btnUndo" class="tbOp" title="元に戻す（Ctrl+Z）" disabled>↶</button>
+    <button id="btnRedo" class="tbOp" title="やり直す（Ctrl+Y／Ctrl+Shift+Z）" disabled>↷</button>
     <div class="tbSep"></div>
     <button id="tFit" class="tbOp" title="全体表示（フィット）">⤢ 全体</button>
   </div>
@@ -528,15 +531,74 @@ function stallPolyAt(x, yAisle, up, W, D, a){
     return [p1,p2,{x:p2.x+D*cosA,y:p2.y+D*sinA},{x:p1.x+D*cosA,y:p1.y+D*sinA}];
   }
 }
-function makeUsableTest(site, obstacles, corridors, margin){
-  return function(poly, ignoreCorridors){
-    const pts = samplePts(poly);
-    for (const p of pts){
-      if (!ptInPoly(p, site)) return false;
-      if (margin > EPS && distToPolyEdge(p, site) < margin - 1e-6) return false;
-      for (const ob of obstacles) if (ptInPoly(p, ob)) return false;
-      if (!ignoreCorridors) for (const co of corridors) if (ptInPoly(p, co)) return false;
+// 各辺の外接矩形（[xmin,xmax,ymin,ymax]×辺数）。境界距離判定で遠い辺を除外するために使う
+function edgeBounds(poly){
+  const n=poly.length, e=new Float64Array(n*4);
+  for (let i=0;i<n;i++){
+    const a=poly[i], b=poly[(i+1)%n], k=i*4;
+    e[k]  =Math.min(a.x,b.x); e[k+1]=Math.max(a.x,b.x);
+    e[k+2]=Math.min(a.y,b.y); e[k+3]=Math.max(a.y,b.y);
+  }
+  return e;
+}
+// 点が poly の辺から thr 未満の距離にあるか。distToPolyEdge(p,poly)<thr と同値だが、
+// 外接矩形で遠い辺を落とし、距離の二乗で比較し、1辺見つかった時点で確定する。
+function nearPolyEdge(p, poly, eb, thr){
+  if (thr <= 0) return false;
+  const n=poly.length, t2=thr*thr;
+  for (let i=0;i<n;i++){
+    const k=i*4;
+    if (p.x < eb[k]-thr || p.x > eb[k+1]+thr ||
+        p.y < eb[k+2]-thr || p.y > eb[k+3]+thr) continue; // この辺は thr より遠い
+    const a=poly[i], b=poly[(i+1)%n];
+    const dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy;
+    let qx,qy;
+    if (L2 < EPS){ qx=a.x; qy=a.y; }
+    else {
+      let t=((p.x-a.x)*dx + (p.y-a.y)*dy) / L2;
+      t = t<0?0:(t>1?1:t);
+      qx=a.x+t*dx; qy=a.y+t*dy;
     }
+    const ex=p.x-qx, ey=p.y-qy;
+    if (ex*ex+ey*ey < t2) return true;
+  }
+  return false;
+}
+function makeUsableTest(site, obstacles, corridors, margin){
+  // サンプル点は配列を作らず走査する（1候補ごとの一時オブジェクト生成を避ける）
+  const thr = margin > EPS ? margin - 1e-6 : 0;
+  const eb = thr > 0 ? edgeBounds(site) : null;
+  // 外接矩形による早期棄却（矩形の外の点はポリゴンの内部になり得ないため判定結果は不変）
+  const sb = bbox(site);
+  const obB = obstacles.map(bbox), coB = corridors.map(bbox);
+  const p = {x:0, y:0}; // 判定用の使い回しオブジェクト（呼び出し先は保持しない）
+  return function(poly, ignoreCorridors){
+    const n=poly.length;
+    const at=(x,y)=>{
+      if (x<sb.x0 || x>sb.x1 || y<sb.y0 || y>sb.y1) return false; // 敷地外
+      p.x=x; p.y=y;
+      if (!ptInPoly(p, site)) return false;
+      if (thr > 0 && nearPolyEdge(p, site, eb, thr)) return false;
+      for (let i=0;i<obstacles.length;i++){
+        const b=obB[i];
+        if (x<b.x0 || x>b.x1 || y<b.y0 || y>b.y1) continue;
+        if (ptInPoly(p, obstacles[i])) return false;
+      }
+      if (!ignoreCorridors) for (let i=0;i<corridors.length;i++){
+        const b=coB[i];
+        if (x<b.x0 || x>b.x1 || y<b.y0 || y>b.y1) continue;
+        if (ptInPoly(p, corridors[i])) return false;
+      }
+      return true;
+    };
+    let cx=0, cy=0;
+    for (const q of poly){ cx+=q.x; cy+=q.y; }
+    for (let i=0;i<n;i++){ // 各頂点と各辺の中点
+      const a=poly[i], b=poly[(i+1)%n];
+      if (!at(a.x, a.y)) return false;
+      if (!at((a.x+b.x)/2, (a.y+b.y)/2)) return false;
+    }
+    if (!at(cx/n, cy/n)) return false; // 重心
     for (const ob of obstacles) for (const v of ob) if (ptInPoly(v, poly)) return false;
     if (!ignoreCorridors) for (const co of corridors) for (const v of co) if (ptInPoly(v, poly)) return false;
     return true;
@@ -596,6 +658,9 @@ function generateA(siteW, obstaclesW, corridorsW, prm){
   const a=prm.angle*Math.PI/180;
   const P = 2*(prm.stallD*Math.sin(a)+prm.stallW*Math.cos(a)) + prm.aisle;
   let best=null, tried=0; const perTheta=[];
+  // オフセットは0.5m刻みの全探索。台数対オフセットは連続的でなく（車室列が1列
+  // 収まるか否かで段差状に変化する）、粗探索→細探索の2段階化では最良案を取り逃す。
+  // 実測: 40×30m・外周車路で 24台→20台 まで落ちる。高速化は別手段で行うこと。
   for (const th of thetas){
     let bt=null;
     for (let off=0; off<P-1e-6; off+=0.5){
@@ -634,6 +699,7 @@ function finishA(res, siteW, obstaclesW, corridorsW, prm){
   const ringM = prm.green + perimeterDepth(prm);
   const hasRing = perimeterMode(prm)!=='none';
   const cuts = [];
+  let deadEnds = 0; // 外周車路・手動車路へ接続できなかった帯端の数（警告表示はUI層）
   function inCorridor(p){
     for (const co of corridors) if (ptInPoly(p,co)) return true;
     return false;
@@ -661,7 +727,7 @@ function finishA(res, siteW, obstaclesW, corridorsW, prm){
         if (blocked) break;
         if (allTarget) connected = ringAll ? 'ring' : 'corridor';
       }
-      if (!connected) continue;
+      if (!connected){ deadEnds++; continue; } // 行き止まり
       if (dir>0) b.x1=x; else b.x0=x;
       if (connected!=='ring') continue;
       // 隅切り: 最寄り辺から外周車路の内側ラインを求め、帯側縁との交角を判定
@@ -705,54 +771,15 @@ function finishA(res, siteW, obstaclesW, corridorsW, prm){
       if (!res.stallsW.some(sp=>convexIntersect(tri,sp,0.02))){ res.cutsW.push(tri); break; }
     }
   }
+  res.deadEnds = deadEnds;
   return res;
-}
-// モードB: 手動車路の両側に車室を自動充填
-function generateB(siteW, obstaclesW, aisleDefs, prm){
-  // aisleDefs: [{pts, width, fill:'both'|'left'|'right'|'none', corridor}]
-  const t0=(typeof performance!=='undefined'?performance.now():Date.now());
-  const a=prm.angle*Math.PI/180, sinA=Math.sin(a), cosA=Math.cos(a);
-  const W=prm.stallW, D=prm.stallD, pitch=W/sinA;
-  const corridors = aisleDefs.map(d=>d.corridor).filter(Boolean);
-  const accepted=[];
-  const usable = makeUsableTest(siteW, obstaclesW, [], prm.green);
-  function collides(sp){
-    for (const q of accepted) if (convexIntersect(sp,q,0.01)) return true;
-    for (const co of corridors){
-      for (const p of samplePts(sp)) if (ptInPoly(p,co)) return true;
-    }
-    return false;
-  }
-  for (const def of aisleDefs){
-    if (def.fill==='none') continue;
-    const h = def.width/2 + 0.005;
-    for (let i=0;i<def.pts.length-1;i++){
-      const p0=def.pts[i], p1=def.pts[i+1];
-      const segAng=Math.atan2(p1.y-p0.y,p1.x-p0.x);
-      const len=Math.hypot(p1.x-p0.x,p1.y-p0.y);
-      const c={x:p0.x,y:p0.y};
-      const toWorld = p=>rot(p,{x:0,y:0},segAng); // ローカル(セグメント基準)→回転
-      function place(side){ // side: +1=左(進行方向左), -1=右
-        for (let x=0; x+pitch<=len+1e-6; x+=pitch){
-          // ローカル座標: セグメントは(0,0)→(len,0)
-          const yA = side*h;
-          const spL = stallPolyAt(x, yA, side<0, W, D, a); // 左側(y>0)は車路が下→up=false
-          const sp = spL.map(p=>{const q=toWorld(p); return {x:q.x+c.x,y:q.y+c.y};});
-          if (!usable(sp,true)) continue;
-          if (collides(sp)) continue;
-          accepted.push(sp);
-        }
-      }
-      if (def.fill==='both'||def.fill==='left') place(1);
-      if (def.fill==='both'||def.fill==='right') place(-1);
-    }
-  }
-  const t1=(typeof performance!=='undefined'?performance.now():Date.now());
-  return {count:accepted.length, stallsW:accepted, bands:[], theta:0,
-    frame:null, ms:Math.round(t1-t0)};
 }
 
 /* ---------- DXFパーサ（ASCII・LINE/LWPOLYLINE/POLYLINE/ARC/CIRCLE） ---------- */
+// 「読み飛ばし」として報告する作図系エンティティ。これ以外（OBJECTS/TABLES の内部データ等）は無視する
+const DXF_REPORT_TYPES = ['INSERT','TEXT','MTEXT','ATTDEF','SPLINE','ELLIPSE','HATCH','DIMENSION',
+  'LEADER','MLEADER','MLINE','SOLID','3DFACE','POINT','REGION','BODY','3DSOLID','IMAGE','WIPEOUT',
+  'XLINE','RAY'];
 function parseDxf(text){
   const lines = text.split(/\r\n|\r|\n/);
   const pairs=[];
@@ -796,10 +823,23 @@ function parseDxf(text){
     }
     return out;
   }
+  // セクション追跡: エンティティの解析・skippedの計上は ENTITIES セクション内のみ
+  let section='';
   while (i<pairs.length){
     const [code,val]=pairs[i];
     if (code!==0){ i++; continue; }
     const type=val.trim();
+    if (type==='SECTION'){
+      section=''; i++;
+      while (i<pairs.length && pairs[i][0]!==0){ if (pairs[i][0]===2) section=pairs[i][1].trim(); i++; }
+      continue;
+    }
+    if (type==='ENDSEC'){ section=''; i++; continue; }
+    if (section!=='ENTITIES'){ // ENTITIES 以外（HEADER/TABLES/BLOCKS/OBJECTS）は計上せず読み飛ばす
+      i++;
+      while (i<pairs.length && pairs[i][0]!==0) i++;
+      continue;
+    }
     if (type==='LINE'){
       let layer='0',x0=0,y0=0,x1=0,y1=0; i++;
       while (i<pairs.length && pairs[i][0]!==0){
@@ -871,8 +911,7 @@ function parseDxf(text){
       }
       ents.push({layer, pts:arcPts(cx,cy,r,0,360), closed:true});
     } else {
-      if (!['SECTION','ENDSEC','EOF','TABLE','ENDTAB','LAYER','VPORT','LTYPE','STYLE','APPID','DIMSTYLE','BLOCK_RECORD','CLASS','ENDBLK','BLOCK','VIEW','UCS'].includes(type))
-        skipped[type]=(skipped[type]||0)+1;
+      if (DXF_REPORT_TYPES.includes(type)) skipped[type]=(skipped[type]||0)+1; // 作図系のみ報告
       i++;
       while (i<pairs.length && pairs[i][0]!==0) i++;
     }
@@ -972,7 +1011,7 @@ function buildDxf(model, unitFactor){
 const state = {
   mode:'A', // 配置モードは自動配置(A)のみ
   site:null, obstacles:[], aisles:[], // aisle:{pts,width}
-  underlay:null, // {ents,layers:{name:bool},snapPts,scale,off:{x,y},visible,opacity}
+  underlay:null, // {ents,layers:{name:bool},scale,off:{x,y},visible,opacity}
   tool:'site', drawing:null, hoverWorld:null,
   snapHit:null, // {p:{x,y}, kind:'end'|'mid'} 現在カーソルが吸着している点
   ortho:false,  // Shift押下中の水平・垂直スナップ（直交モード）
@@ -982,26 +1021,78 @@ const state = {
   view:{s:12,ox:80,oy:80}, dragging:null,
   calib:null,
 };
-const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const cv=document.getElementById('cv');
+let ctx=cv.getContext('2d');   // 描画先。PNG書き出し時のみオフスクリーンへ一時差し替え
+let canvasW=0, canvasH=0;      // 描画先の論理サイズ（CSS px相当）
+let renderTarget=null;         // {w,h,scale} 非nullならオフスクリーン描画中
 const $=id=>document.getElementById(id);
 
+/* ---------- 入力検証 ---------- */
+// 数値入力の有効範囲。空欄・非数値は既定値、範囲外はクランプする。
+// 車室幅0は pitch=0 となり配置ループが進まなくなる（ブラウザが固まる）ため、下限は必須。
+const PARAM_RANGE={
+  pW:     {min:1.5, max:5,   def:2.5, label:'車室幅'},
+  pD:     {min:3,   max:15,  def:5,   label:'車室奥行'},
+  pAisle: {min:2.5, max:30,  def:6,   label:'車路幅'},
+  pAisleM:{min:2.5, max:30,  def:6,   label:'手動車路の幅員'},
+  pGreen: {min:0,   max:30,  def:1,   label:'緑化幅'},
+  pDir:   {min:0,   max:179, def:0,   label:'配置方向'},
+};
+const SELECT_DEF={pAngle:'90', pPerimeter:'stall', pExpUnit:'1000'};
+// 計算に使う値。DOMは書き換えない（入力途中の値でエンジンが壊れないようにするため）
+function paramVal(id){
+  const r=PARAM_RANGE[id], v=parseFloat($(id).value);
+  if (!isFinite(v)) return r.def;
+  return v<r.min ? r.min : v>r.max ? r.max : v;
+}
+// 入力確定時にDOMを是正する。修正したら true
+function fixParam(id){
+  const r=PARAM_RANGE[id], v=parseFloat($(id).value);
+  let fixed=null;
+  if (!isFinite(v)) fixed=r.def;
+  else if (v<r.min) fixed=r.min;
+  else if (v>r.max) fixed=r.max;
+  if (fixed===null) return false;
+  $(id).value=fixed;
+  setMsg(`${r.label}は ${r.min}〜${r.max} の範囲で入力してください（${fixed} に修正しました）`);
+  return true;
+}
+// 選択肢に無い値（不正なJSONの読込等）を既定値へ戻す
+function fixSelect(id){
+  const el=$(id), def=SELECT_DEF[id];
+  if (def==null || !el) return false;
+  for (const o of el.options) if (o.value===el.value) return false;
+  el.value=def;
+  return true;
+}
+// 全入力の一括是正（JSON読込後などに使う）。修正した項目数を返す
+function fixAllParams(){
+  let n=0;
+  for (const id in PARAM_RANGE) if (fixParam(id)) n++;
+  for (const id in SELECT_DEF) if (fixSelect(id)) n++;
+  return n;
+}
 function readParams(){
   const perimeter = $('pPerimeter').value;
   return {
-    stallW:+$('pW').value, stallD:+$('pD').value, angle:+$('pAngle').value,
-    aisle:+$('pAisle').value, perimeter, ring: perimeter!=='none',
-    green:+$('pGreen').value,
-    autoDir:$('pAutoDir').checked, dir:+$('pDir').value,
+    stallW:paramVal('pW'), stallD:paramVal('pD'), angle:+$('pAngle').value||90,
+    aisle:paramVal('pAisle'), perimeter, ring: perimeter!=='none',
+    green:paramVal('pGreen'),
+    autoDir:$('pAutoDir').checked, dir:paramVal('pDir'),
   };
 }
-function aisleWidth(a){ return a.width!=null ? a.width : +$('pAisleM').value; }
+function aisleWidth(a){
+  const w = a.width!=null ? +a.width : paramVal('pAisleM');
+  return isFinite(w) && w>0 ? w : PARAM_RANGE.pAisleM.def;
+}
 function corridorOf(a){ return corridorFromPolyline(a.pts, aisleWidth(a)); }
 function allCorridors(){ return state.aisles.map(corridorOf).filter(Boolean); }
 
 /* ---------- 座標変換・ビュー ---------- */
 function w2s(p){ return {x:state.view.ox+p.x*state.view.s, y:state.view.oy-p.y*state.view.s}; }
 function s2w(p){ return {x:(p.x-state.view.ox)/state.view.s, y:(state.view.oy-p.y)/state.view.s}; }
-function fitView(){
+// 表示対象すべて（敷地・障害物・手動車路・車室・隅切り・下図）の外接矩形。対象なしは null
+function contentBBox(){
   const polys=[];
   if (state.site) polys.push(state.site);
   for (const ob of state.obstacles) polys.push(ob);
@@ -1009,13 +1100,24 @@ function fitView(){
   if (state.drawing && state.drawing.pts.length) polys.push(state.drawing.pts);
   if (state.underlay && state.underlay.visible)
     for (const e of state.underlay.ents) polys.push(e.pts.map(uPt));
-  if (!polys.length) return;
-  const bb=bbox(polys.flat()), pad=40;
-  const sw=cv.clientWidth-pad*2, sh=cv.clientHeight-pad*2;
+  if (state.shown){
+    for (const sp of state.shown.stallsW||[]) polys.push(sp);
+    for (const tri of state.shown.cutsW||[]) polys.push(tri);
+  }
+  if (!polys.length) return null;
+  return bbox(polys.flat());
+}
+// bb が w×h（論理px）に余白 pad で収まるビューを算出
+function viewFor(bb,w,h,pad){
+  const sw=w-pad*2, sh=h-pad*2;
   const s=Math.min(sw/Math.max(bb.x1-bb.x0,1), sh/Math.max(bb.y1-bb.y0,1));
-  state.view.s=s;
-  state.view.ox=pad+(sw-(bb.x1-bb.x0)*s)/2 - bb.x0*s;
-  state.view.oy=cv.clientHeight-pad-(sh-(bb.y1-bb.y0)*s)/2 + bb.y0*s;
+  return {s, ox:pad+(sw-(bb.x1-bb.x0)*s)/2 - bb.x0*s,
+             oy:h-pad-(sh-(bb.y1-bb.y0)*s)/2 + bb.y0*s};
+}
+function fitView(){
+  const bb=contentBBox();
+  if (!bb) return;
+  state.view=viewFor(bb, cv.clientWidth, cv.clientHeight, 40);
   draw();
 }
 // 下図座標→ワールド(m)
@@ -1049,12 +1151,20 @@ function drawDimLabel(aW,bW,color){
   ctx.restore();
 }
 function draw(){
-  const dpr=window.devicePixelRatio||1;
-  if (cv.width!==cv.clientWidth*dpr||cv.height!==cv.clientHeight*dpr){
-    cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
+  if (renderTarget){ // PNG書き出し: 指定倍率で描画し、背景色を塗る（画面は透過のため）
+    canvasW=renderTarget.w; canvasH=renderTarget.h;
+    ctx.setTransform(renderTarget.scale,0,0,renderTarget.scale,0,0);
+    ctx.clearRect(0,0,canvasW,canvasH);
+    ctx.fillStyle='#14181d'; ctx.fillRect(0,0,canvasW,canvasH);
+  } else {
+    const dpr=window.devicePixelRatio||1;
+    canvasW=cv.clientWidth; canvasH=cv.clientHeight;
+    if (cv.width!==canvasW*dpr||cv.height!==canvasH*dpr){
+      cv.width=canvasW*dpr; cv.height=canvasH*dpr;
+    }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,canvasW,canvasH);
   }
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,cv.clientWidth,cv.clientHeight);
   drawGrid();
   drawUnderlay();
   const prm=readParams();
@@ -1202,7 +1312,7 @@ function draw(){
 }
 function drawGrid(){
   const s=state.view.s; if (s<1.2) return;
-  const w=cv.clientWidth,h=cv.clientHeight;
+  const w=canvasW,h=canvasH;
   const p0=s2w({x:0,y:h}),p1=s2w({x:w,y:0});
   ctx.lineWidth=1;
   for (const [step,col] of [[1,'#191f26'],[5,'#222a33']]){
@@ -1279,18 +1389,68 @@ function syncAisleWidthInput(){
 function deleteSelShapes(){
   const s=state.sel;
   if (!s || s.type!=='shape') return;
+  pushUndo();
   if (s.kind==='site'){
     state.site=null; state.shown=null; state.result=null;
     $('kCount').textContent='–';
     $('altList').innerHTML='<p class="hint">生成後に方向別の比較案が表示されます。</p>';
+    updateWarnings();
   } else if (s.kind==='obs'){
     state.obstacles=state.obstacles.filter((_,i)=>!s.idxs.includes(i));
   } else {
     state.aisles=state.aisles.filter((_,i)=>!s.idxs.includes(i));
   }
   state.sel=null;
-  updateCounts(); scheduleRun(); draw();
+  scheduleRun(); draw();
 }
+
+/* ---------- Undo / Redo ---------- */
+// スナップショット方式（差分ではなく全体コピー）。対象は図形3種のみで、
+// ビュー・下図DXF・選択状態・パラメータ入力欄は対象外。
+const UNDO_MAX=50;
+const undoStack=[], redoStack=[];
+function snapshot(){
+  return JSON.parse(JSON.stringify(
+    {site:state.site, obstacles:state.obstacles, aisles:state.aisles}));
+}
+function applySnapshot(s){
+  const d=JSON.parse(JSON.stringify(s)); // 頂点オブジェクトをスタックと共有しない
+  state.site=d.site||null; state.obstacles=d.obstacles||[]; state.aisles=d.aisles||[];
+}
+function pushStack(stack,snap){
+  stack.push(snap);
+  if (stack.length>UNDO_MAX) stack.shift(); // 上限超過は古いものから捨てる
+}
+// 操作の直前に呼ぶ（1操作＝1スナップショット）。snap省略時は現在の状態を採る。
+// ドラッグ操作では開始時に採ったスナップショットを渡す。
+function pushUndo(snap){
+  pushStack(undoStack, snap||snapshot());
+  redoStack.length=0; // 新規操作でやり直し履歴は破棄
+  updateUndoButtons();
+  markDirty();
+}
+function restoreShapes(from,to,failMsg){
+  if (!from.length){ setMsg(failMsg); return; }
+  pushStack(to, snapshot());
+  applySnapshot(from.pop());
+  state.sel=null;
+  if (!state.site){ // 敷地が無い状態へ戻ったら結果表示もクリア
+    state.shown=null; state.result=null;
+    $('kCount').textContent='–';
+    $('altList').innerHTML='<p class="hint">生成後に方向別の比較案が表示されます。</p>';
+    updateWarnings();
+  }
+  updateUndoButtons(); markDirty();
+  scheduleRun(); draw();
+}
+function undo(){ restoreShapes(undoStack,redoStack,'これ以上戻せません'); }
+function redo(){ restoreShapes(redoStack,undoStack,'これ以上やり直せません'); }
+function updateUndoButtons(){
+  $('btnUndo').disabled=!undoStack.length;
+  $('btnRedo').disabled=!redoStack.length;
+}
+$('btnUndo').onclick=undo;
+$('btnRedo').onclick=redo;
 
 /* ---------- 生成・結果表示 ---------- */
 let calcToken=0;
@@ -1298,16 +1458,19 @@ function run(quick){
   if (!state.site||state.site.length<3){ setMsg('先に敷地を入力してください'); return; }
   const prm=readParams();
   const corridors=allCorridors();
-  checkObstacleWarn(corridors);
   const token=++calcToken;
   const go=()=>{
     if (token!==calcToken) return;
     const res=generateA(state.site,state.obstacles,corridors,prm);
     state.result=res; state.shown=res.best;
     finishA(state.shown, state.site, state.obstacles, corridors, prm);
+    updateWarnings(corridors); // 行き止まり数は finishA 後に確定する
     renderResults(prm,corridors);
     draw();
-    setMsg(`生成完了：${state.shown.count}台（${state.result.tried}案 / ${state.result.ms}ms）`);
+    // 自己交差した形状は面積が打ち消し合い0台になり得るため、原因を併記する
+    const warn=selfIntersectWarn();
+    setMsg(`生成完了：${state.shown.count}台（${state.result.tried}案 / ${state.result.ms}ms）`
+      +(warn?`／⚠ ${warn}`:''));
   };
   if (quick) go(); else { setMsg('計算中…'); setTimeout(go,10); }
 }
@@ -1321,36 +1484,56 @@ function computeAreas(prm,corridors){
   const nx=Math.max(1,Math.ceil((bb.x1-bb.x0)/step-0.5));
   const ny=Math.max(1,Math.ceil((bb.y1-bb.y0)/step-0.5));
   const px=ix=>bb.x0+step/2+ix*step, py=iy=>bb.y0+step/2+iy*step;
+  // ポリゴン群を格子へラスタライズ。セル中心の内外判定は従来と同一だが、
+  // 走査をポリゴンの外接矩形内に限る（外接矩形の外は内部になり得ないため結果は不変）。
+  const rasterize=polys=>{
+    const f=new Uint8Array(nx*ny);
+    for (const poly of polys){
+      if (!poly || poly.length<3) continue;
+      const pb=bbox(poly);
+      const ix0=Math.max(0, Math.ceil((pb.x0-bb.x0-step/2)/step));
+      const ix1=Math.min(nx-1, Math.floor((pb.x1-bb.x0-step/2)/step));
+      const iy0=Math.max(0, Math.ceil((pb.y0-bb.y0-step/2)/step));
+      const iy1=Math.min(ny-1, Math.floor((pb.y1-bb.y0-step/2)/step));
+      for (let ix=ix0;ix<=ix1;ix++){
+        const cxp=px(ix), col=ix*ny;
+        for (let iy=iy0;iy<=iy1;iy++){
+          const j=col+iy;
+          if (!f[j] && ptInPoly({x:cxp,y:py(iy)},poly)) f[j]=1;
+        }
+      }
+    }
+    return f;
+  };
+  const obsF=rasterize(state.obstacles), coF=rasterize(corridors), stallF=rasterize(stallPolys);
+  const cutF=(shown&&shown.cutsW) ? rasterize(shown.cutsW) : null;
   // 分類コード: 0=敷地外 1=障害物 2=緑化帯 3=舗装(車路) 4=車室 5=余り
   const cls=new Uint8Array(nx*ny);
+  const isStallMode=perimeterMode(prm)==='stall', pDepth=perimeterDepth(prm);
+  const bands=(shown&&shown.frame) ? shown.bands : null;
+  // 帯判定用の回転（セルごとに sin/cos を求め直さない）
+  let bcx=0,bcy=0,bs=0,bc=1;
+  if (bands){ bcx=shown.frame.c.x; bcy=shown.frame.c.y; bs=Math.sin(-shown.frame.th); bc=Math.cos(-shown.frame.th); }
+  const p={x:0,y:0};
   for (let ix=0;ix<nx;ix++) for (let iy=0;iy<ny;iy++){
-    const p={x:px(ix), y:py(iy)};
+    p.x=px(ix); p.y=py(iy);
     if (!ptInPoly(p,site)) continue;
     const idx=ix*ny+iy;
-    let inObstacle=false;
-    for (const ob of state.obstacles) if (ptInPoly(p,ob)){inObstacle=true;break;}
-    if (inObstacle){ cls[idx]=1; continue; }
+    if (obsF[idx]){ cls[idx]=1; continue; }
     const dEdge=distToPolyEdge(p,site);
-    let inCo=false;
-    for (const co of corridors){ if (ptInPoly(p,co)){inCo=true;break;} }
+    const inCo=coF[idx]===1;
     if (dEdge<prm.green){ cls[idx]=inCo?3:2; continue; }
     if (inCo){ cls[idx]=3; continue; }
-    let inStall=false;
-    for (const sp of stallPolys) if (ptInPoly(p,sp)){inStall=true;break;}
-    if (inStall){ cls[idx]=4; continue; } // 外周車室は車路より先に判定
-    if (perimeterMode(prm)==='stall' && dEdge<prm.green+prm.stallD){ cls[idx]=2; continue; } // 車室帯の余白は緑地
-    if (prm.ring && dEdge<prm.green+perimeterDepth(prm)){ cls[idx]=3; continue; } // 外周車路
-    if (shown && shown.frame){
-      const {c,th}=shown.frame;
-      const q=rot(p,c,-th);
+    if (stallF[idx]){ cls[idx]=4; continue; } // 外周車室は車路より先に判定
+    if (isStallMode && dEdge<prm.green+prm.stallD){ cls[idx]=2; continue; } // 車室帯の余白は緑地
+    if (prm.ring && dEdge<prm.green+pDepth){ cls[idx]=3; continue; } // 外周車路
+    if (bands){
+      const dx=p.x-bcx, dy=p.y-bcy;
+      const qx=bcx+dx*bc-dy*bs, qy=bcy+dx*bs+dy*bc;
       let inBand=false;
-      for (const b of shown.bands){ if (q.y>=b.y0&&q.y<=b.y1&&q.x>=b.x0&&q.x<=b.x1){inBand=true;break;} }
+      for (const b of bands){ if (qy>=b.y0&&qy<=b.y1&&qx>=b.x0&&qx<=b.x1){inBand=true;break;} }
       if (inBand){ cls[idx]=3; continue; }
-      if (shown.cutsW){
-        let inCut=false;
-        for (const tri of shown.cutsW) if (ptInPoly(p,tri)){inCut=true;break;}
-        if (inCut){ cls[idx]=3; continue; } // 隅切りも車路扱い
-      }
+      if (cutF && cutF[idx]){ cls[idx]=3; continue; } // 隅切りも車路扱い
     }
     cls[idx]=5;
   }
@@ -1391,6 +1574,10 @@ function computeAreas(prm,corridors){
   }
   return {green,aisle,obstacleA,stallA,islandA,greenCells,step};
 }
+// 数値表示の共通整形。0除算・NaN（退化した敷地など）は '–' として表示する
+function fmtN(v,digits,unit){
+  return isFinite(v) ? v.toFixed(digits)+(unit||'') : '–';
+}
 function renderResults(prm,corridors){
   const res=state.result; if(!res) return;
   const area=polyAreaAbs(state.site), shown=state.shown;
@@ -1401,36 +1588,48 @@ function renderResults(prm,corridors){
   const h=ca.step*0.9;
   state.greenPath=new Path2D();
   for (const p of ca.greenCells) state.greenPath.rect(p.x-h, p.y-h, h*2, h*2);
-  $('kCount').innerHTML=shown.count+'<span class="numUnit">台</span>';
-  $('kArea').textContent=area.toFixed(1)+' ㎡';
-  $('kUnit').textContent=shown.count?(area/shown.count).toFixed(1):'–';
-  $('kStall').textContent=(shown.count*prm.stallW*prm.stallD).toFixed(1)+' ㎡';
-  $('kAisleA').textContent=aisle.toFixed(0)+' ㎡';
-  $('kObstacle').textContent=obstacleA.toFixed(0)+' ㎡';
-  $('kGreen').textContent=green.toFixed(0)+' ㎡ / '+(green/area*100).toFixed(1)+'%';
-  $('kTheta').textContent=shown.theta.toFixed(1)+'°／駐車角'+prm.angle+'°';
-  $('kTried').textContent=res.tried+' 案 / '+res.ms+' ms';
+  $('kCount').innerHTML=(isFinite(shown.count)?shown.count:'–')+'<span class="numUnit">台</span>';
+  $('kArea').textContent=fmtN(area,1,' ㎡');
+  // 原単位・緑地率は分母が0（退化・自己交差敷地／台数0）のとき '–'
+  $('kUnit').textContent=shown.count>0?fmtN(area/shown.count,1):'–';
+  $('kStall').textContent=fmtN(shown.count*prm.stallW*prm.stallD,1,' ㎡');
+  $('kAisleA').textContent=fmtN(aisle,0,' ㎡');
+  $('kObstacle').textContent=fmtN(obstacleA,0,' ㎡');
+  $('kGreen').textContent=fmtN(green,0,' ㎡')+' / '+(area>0?fmtN(green/area*100,1,'%'):'–');
+  $('kTheta').textContent=fmtN(shown.theta,1,'°')+'／駐車角'+prm.angle+'°';
+  $('kTried').textContent=(res.tried||0)+' 案 / '+(res.ms||0)+' ms';
   const list=$('altList'); list.innerHTML='';
   res.perTheta.forEach(r=>{
     const div=document.createElement('div');
     div.className='alt'+(r===state.shown?' sel':'');
     div.innerHTML=`<span class="c">${r.count}台</span> <span class="d">方向 ${r.theta.toFixed(1)}°</span>`;
-    div.onclick=()=>{finishA(r,state.site,state.obstacles,corridors||allCorridors(),prm);state.shown=r;renderResults(prm,corridors);draw();};
+    div.onclick=()=>{const co=corridors||allCorridors();
+      finishA(r,state.site,state.obstacles,co,prm);state.shown=r;
+      updateWarnings(co);renderResults(prm,corridors);draw();};
     list.appendChild(div);
   });
 }
-function checkObstacleWarn(corridors){
-  let hit=false;
-  outer:
+// 障害物と手動車路の干渉
+function obstacleHits(corridors){
   for (const ob of state.obstacles){
     for (const co of corridors){
-      for (const p of samplePts(ob)) if (ptInPoly(p,co)){hit=true;break outer;}
-      for (const v of co) if (ptInPoly(v,ob)){hit=true;break outer;}
+      for (const p of samplePts(ob)) if (ptInPoly(p,co)) return true;
+      for (const v of co) if (ptInPoly(v,ob)) return true;
     }
   }
+  return false;
+}
+// 警告表示（複数の警告を同時に表示する）
+function updateWarnings(corridors){
+  const msgs=[];
+  if (obstacleHits(corridors||allCorridors()))
+    msgs.push('⚠ 障害物と手動車路が干渉しています（形状を確認してください）');
+  const de = state.shown ? state.shown.deadEnds : 0;
+  if (de>0)
+    msgs.push(`⚠ 行き止まりの車路が${de}箇所あります（動線を確認してください）`);
   const w=$('warn');
-  w.style.display=hit?'block':'none';
-  if (hit) w.textContent='⚠ 障害物と手動車路が干渉しています（形状を確認してください）';
+  w.style.display=msgs.length?'block':'none';
+  w.innerHTML=msgs.map(m=>`<div>${m}</div>`).join('');
 }
 function setMsg(t){$('msgText').textContent=t;}
 function setModeBadge(t){$('msgMode').textContent=t?`【${t}】`:'';}
@@ -1516,19 +1715,44 @@ function setTool(m){
   setModeBadge(badges[m]||'');
   draw();
 }
+/* ---------- 自己交差判定 ---------- */
+// 閉ポリゴンの非隣接辺ペアの交差を判定（隣接辺・最初×最後の辺は端点共有のため除外）。
+// 頂点数は実用上100未満のためO(n²)で十分。手動車路（中心線）には適用しない。
+function selfIntersects(poly){
+  const n=poly.length;
+  if (n<4) return false;
+  for (let i=0;i<n;i++){
+    for (let j=i+2;j<n;j++){
+      if (i===0 && j===n-1) continue; // 最初の辺と最後の辺は端点を共有
+      if (segSegT(poly[i],poly[(i+1)%n],poly[j],poly[(j+1)%n])!==null) return true;
+    }
+  }
+  return false;
+}
+// 敷地・障害物の自己交差を点検し、警告文を返す（問題なければ ''）
+function selfIntersectWarn(){
+  const bad=[];
+  if (state.site && selfIntersects(state.site)) bad.push('敷地');
+  if (state.obstacles.some(ob=>selfIntersects(ob))) bad.push('障害物');
+  return bad.length ? bad.join('・')+'の辺が交差しています。頂点を修正してください' : '';
+}
 function closeDrawing(){
   const d=state.drawing; if(!d) return;
   if (d.kind==='aisle'){
     if (d.pts.length<2) return;
-    state.aisles.push({pts:d.pts, width:+$('pAisleM').value});
+    pushUndo();
+    state.aisles.push({pts:d.pts, width:paramVal('pAisleM')});
     state.drawing={kind:'aisle',pts:[]};
-    updateCounts(); scheduleRun(); return;
+    scheduleRun(); return;
   }
   if (d.pts.length<3) return;
+  // 自己交差時は閉合を拒否し、作図中の点列は保持してユーザーに修正させる
+  if (selfIntersects(d.pts)){ setMsg('辺が交差しています。頂点を修正してください'); return; }
+  pushUndo();
   if (d.kind==='site') state.site=d.pts;
   else state.obstacles.push(d.pts);
   state.drawing={kind:d.kind,pts:[]};
-  updateCounts(); scheduleRun();
+  scheduleRun();
 }
 cv.addEventListener('mousedown',e=>{
   const sp={x:e.offsetX,y:e.offsetY};
@@ -1564,7 +1788,8 @@ cv.addEventListener('mousedown',e=>{
         if (Math.hypot(q.x-sp.x,q.y-sp.y)<tol){
           state.sel={type:'vertex',list:t.list,idx:i,min:t.min};
           state.dragging={kind:'vertex',list:t.list,idx:i,
-            ref:{x:t.list[i].x,y:t.list[i].y}}; // 直交モードの基準=ドラッグ開始位置
+            ref:{x:t.list[i].x,y:t.list[i].y}, // 直交モードの基準=ドラッグ開始位置
+            snap:snapshot()}; // Undo用。実際に移動したときだけmouseupで積む
           draw(); return;
         }
       }
@@ -1577,7 +1802,8 @@ cv.addEventListener('mousedown',e=>{
     syncAisleWidthInput();
     const lists=selShapeLists();
     state.dragging={kind:'move', w0:s2w(sp), lists,
-      orig:lists.map(l=>l.map(p=>({x:p.x,y:p.y}))), moved:false};
+      orig:lists.map(l=>l.map(p=>({x:p.x,y:p.y}))), moved:false,
+      snap:snapshot()}; // Undo用。実際に移動したときだけmouseupで積む
     draw(); return;
   }
   state.sel=null;
@@ -1623,12 +1849,19 @@ cv.addEventListener('mouseleave',()=>{
 });
 window.addEventListener('mouseup',()=>{
   const d=state.dragging;
+  let changed=false;
   if (d && d.kind==='vertex'){
     const p=d.list[d.idx];
     // 実際に頂点が動いた場合のみ再配置（掴んで離しただけでは不要）
-    if (!d.ref || p.x!==d.ref.x || p.y!==d.ref.y) scheduleRun();
+    if (!d.ref || p.x!==d.ref.x || p.y!==d.ref.y) changed=true;
   }
-  if (d && d.kind==='move' && d.moved) scheduleRun();
+  if (d && d.kind==='move' && d.moved) changed=true;
+  if (changed){
+    pushUndo(d.snap); // ドラッグ開始時の状態を1件だけ積む（中間フレームは積まない）
+    // 移動結果が自己交差でも移動は取り消さず、警告のみ表示して修正を促す
+    const w=selfIntersectWarn(); if (w) setMsg(w);
+    scheduleRun();
+  }
   state.dragging=null;
 });
 cv.addEventListener('click',e=>{
@@ -1659,6 +1892,7 @@ cv.addEventListener('dblclick',e=>{
           let tt=L2>EPS ? ((w.x-a.x)*(b.x-a.x)+(w.y-a.y)*(b.y-a.y))/L2 : 0;
           tt=Math.max(0,Math.min(1,tt));
           const p={x:a.x+(b.x-a.x)*tt, y:a.y+(b.y-a.y)*tt};
+          pushUndo();
           t.list.splice(i+1,0,p);
           state.sel={type:'vertex',list:t.list,idx:i+1,min:t.min};
           // 追加のみでは形状不変のため再配置しない（移動時のmouseupで再配置）
@@ -1685,6 +1919,13 @@ window.addEventListener('keydown',e=>{
     if (state.drawing || (state.dragging&&state.dragging.kind==='vertex')) draw();
     return;
   }
+  // Undo/Redo: 入力欄にフォーカス中はブラウザ標準動作を優先し横取りしない
+  if ((e.ctrlKey||e.metaKey) && !e.altKey && /^[zy]$/i.test(e.key)){
+    if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    e.preventDefault();
+    if (e.key.toLowerCase()==='y' || e.shiftKey) redo(); else undo();
+    return;
+  }
   if (e.key==='Escape'){
     if (state.drawing) state.drawing.pts=[];
     state.calib=null; state.sel=null; draw(); return;
@@ -1705,8 +1946,10 @@ window.addEventListener('keyup',e=>{
 });
 function deleteVertex(list,idx,min){
   if (list.length<=min){ setMsg(`頂点数の下限（${min}）のため削除できません`); return; }
+  pushUndo();
   list.splice(idx,1);
   state.sel=null;
+  const w=selfIntersectWarn(); if (w) setMsg(w); // 削除結果が自己交差なら警告（削除は取り消さない）
   scheduleRun(); draw();
 }
 cv.addEventListener('wheel',e=>{
@@ -1722,18 +1965,29 @@ cv.addEventListener('wheel',e=>{
 /* ---------- 手動車路 幅員（左パネル） ---------- */
 // 未選択時: 新規作図のデフォルト幅員。手動車路選択中: 選択車路の幅員を変更
 $('pAisleM').addEventListener('change',()=>{
+  fixParam('pAisleM');
   const s=state.sel;
   if (s && s.type==='shape' && s.kind==='aisle'){
-    const v=+$('pAisleM').value;
+    const v=paramVal('pAisleM');
+    pushUndo();
     for (const i of s.idxs){ if (state.aisles[i]) state.aisles[i].width=v; }
     scheduleRun(); draw();
-  }
+  } else scheduleAutosave(); // 新規作図の既定幅の変更（図形は変わらない）
 });
 
 /* ---------- パラメータ ---------- */
 let timer=null;
 function scheduleRun(){ if(!state.site)return; clearTimeout(timer); timer=setTimeout(()=>run(false),180); }
-['pW','pD','pAngle','pGreen','pPerimeter','pAisle'].forEach(id=>$(id).addEventListener('change',scheduleRun));
+['pW','pD','pAngle','pGreen','pPerimeter','pAisle'].forEach(id=>
+  $(id).addEventListener('change',()=>{
+    if (PARAM_RANGE[id]) fixParam(id); else fixSelect(id); // 空欄・範囲外を是正
+    scheduleRun(); scheduleAutosave();
+  }));
+// パラメータのみの変更は自動保存の対象（図形は変わらないため離脱警告の対象外）
+['pDir','pExpUnit'].forEach(id=>$(id).addEventListener('change',()=>{
+  if (PARAM_RANGE[id]) fixParam(id); else fixSelect(id);
+  scheduleAutosave();
+}));
 $('pAutoDir').addEventListener('change',()=>{
   const auto=$('pAutoDir').checked;
   $('pDir').disabled=auto; $('pDirSlider').disabled=auto;
@@ -1741,7 +1995,7 @@ $('pAutoDir').addEventListener('change',()=>{
     const t=Math.round(state.result.best.theta);
     $('pDir').value=t; $('pDirSlider').value=t;
   }
-  scheduleRun();
+  scheduleRun(); scheduleAutosave();
 });
 // リアルタイム角度（θ固定なので即時実行）
 let rafPending=false;
@@ -1761,15 +2015,16 @@ $('selDraw').addEventListener('change',e=>setTool(e.target.value));
 $('selDraw').addEventListener('mousedown',()=>{ if(state.tool==='edit') setTool($('selDraw').value); });
 $('mEdit').onclick=()=>setTool('edit');
 $('tFit').onclick=fitView;
-function updateCounts(){}
 $('btnClear').onclick=()=>{
+  pushUndo();
   state.site=null;state.obstacles=[];state.aisles=[];state.shown=null;state.result=null;state.sel=null;
   clearUnderlay();
   $('kCount').textContent='–';$('altList').innerHTML='<p class="hint">生成後に方向別の比較案が表示されます。</p>';
+  updateWarnings([]);
   setMsg('すべて消去しました（敷地・障害物・車路・下図）');
   draw();
 };
-function setSite(pts){state.site=pts;state.obstacles=[];state.aisles=[];state.shown=null;updateCounts();fitView();run(false);}
+function setSite(pts){state.site=pts;state.obstacles=[];state.aisles=[];state.shown=null;fitView();run(false);}
 
 /* ---------- DXF下図 ---------- */
 $('btnDxfLoad').onclick=()=>$('fileDxf').click();
@@ -1798,15 +2053,12 @@ function loadDxfText(text,name){
   // 単位: $INSUNITS 4=mm,5=cm,6=m,1=inch → scale
   const unitMap={1:0.0254,2:0.3048,4:0.001,5:0.01,6:1};
   const scale=unitMap[parsed.insunits]||0.001; // 既定mm
-  // スナップ点
-  const snapPts=[];
-  for (const e2 of parsed.ents) for (const p of e2.pts) snapPts.push(p);
   // 原点付近へ自動フィット
   const bb=bbox(parsed.ents.flatMap(e2=>e2.pts));
   const off={x:-bb.x0*scale, y:-bb.y0*scale};
   const layers={};
   for (const e2 of parsed.ents) layers[e2.layer]=true;
-  state.underlay={ents:parsed.ents,snapPts,scale,off,visible:true,opacity:0.55,layers};
+  state.underlay={ents:parsed.ents,scale,off,visible:true,opacity:0.55,layers};
   ['uVisible','uOpacity','uUnit','btnCalib','btnDxfClear'].forEach(id=>$(id).disabled=false);
   $('uUnit').value=String(scale);
   renderLayerList();
@@ -1886,19 +2138,91 @@ $('btnDxf').onclick=()=>{
   download('parking_layout.dxf', buildDxf(model,uf), 'application/dxf');
   setMsg(`DXF出力（単位: ${uf===1000?'mm':'m'}）`);
 };
+// PNG書き出し: 画面のズーム位置に関わらず図形全体を含める。
+// オフスクリーンcanvasへ2倍解像度で描画し、state.view と描画先は try/finally で必ず復帰させる
 $('btnPng').onclick=()=>{
+  const SCALE=2; // 出力倍率（devicePixelRatioとは独立の固定値）
+  const bb=contentBBox();
+  // 出力サイズは図形の縦横比に合わせる（長辺1200論理px）。図形が無いときは画面と同サイズ
+  let W=Math.max(1,cv.clientWidth), H=Math.max(1,cv.clientHeight);
+  if (bb){
+    const gw=Math.max(bb.x1-bb.x0,1e-6), gh=Math.max(bb.y1-bb.y0,1e-6), base=1200;
+    if (gw>=gh){ W=base; H=Math.max(300,Math.round(base*gh/gw)); }
+    else { H=base; W=Math.max(300,Math.round(base*gw/gh)); }
+  }
+  const off=document.createElement('canvas');
+  off.width=Math.round(W*SCALE); off.height=Math.round(H*SCALE);
+  const prevCtx=ctx, prevView=state.view, prevSnap=state.snapHit;
+  try{
+    ctx=off.getContext('2d');
+    renderTarget={w:W,h:H,scale:SCALE};
+    state.snapHit=null; // スナップマーカーは出力しない
+    if (bb) state.view=viewFor(bb, W, H, Math.max(20, Math.min(W,H)*0.05)); // 余白: 5%（最低20px）
+    draw();
+  } finally {
+    ctx=prevCtx; renderTarget=null;
+    state.view=prevView; state.snapHit=prevSnap;
+    draw(); // 画面を元のビューで再描画
+  }
   const a=document.createElement('a');
-  a.href=cv.toDataURL('image/png');a.download='parking_layout.png';a.click();
+  a.href=off.toDataURL('image/png');a.download='parking_layout.png';a.click();
+  setMsg(`PNG出力（${off.width}×${off.height}px・図形全体）`);
 };
-$('btnSave').onclick=()=>{
-  download('parking_study.json',JSON.stringify({
+// 保存JSONの構築（自動保存でも同じ構造を使う。下図DXFは含めない）
+function buildStudyJson(){
+  return {
     version:1,
     params:{stallW:+$('pW').value,stallD:+$('pD').value,angle:+$('pAngle').value,
       aisle:+$('pAisle').value,aisleM:+$('pAisleM').value,
       perimeter:$('pPerimeter').value,green:+$('pGreen').value,
       autoDir:$('pAutoDir').checked,dir:+$('pDir').value,expUnit:+$('pExpUnit').value},
     site:state.site, obstacles:state.obstacles, aisles:state.aisles,
-  },null,1),'application/json');
+  };
+}
+// 読込JSONの点列検証: 座標が数値でない／点数不足の図形は採用しない（null を返す）
+function sanitizePts(a, min){
+  if (!Array.isArray(a) || a.length<min) return null;
+  const out=[];
+  for (const q of a){
+    if (!q || !isFinite(+q.x) || !isFinite(+q.y)) return null;
+    out.push({x:+q.x, y:+q.y});
+  }
+  return out;
+}
+// 保存JSON→パラメータ・図形の復元（ファイル読込・自動保存の復元で共用）
+function loadStudyJson(d){
+  if (!d || typeof d!=='object') throw new Error('形式が不正です');
+  const p=d.params||{};
+  $('pW').value=p.stallW??2.5; $('pD').value=p.stallD??5.0;
+  $('pAngle').value=p.angle??90; $('pAisle').value=p.aisle??6.0;
+  $('pAisleM').value=p.aisleM??6.0;
+  $('pPerimeter').value=p.perimeter??((p.ring??true)?'ring':'none'); $('pGreen').value=p.green??1.0;
+  $('pAutoDir').checked=p.autoDir??true; $('pDir').value=p.dir??0; $('pDirSlider').value=p.dir??0;
+  $('pDir').disabled=$('pAutoDir').checked; $('pDirSlider').disabled=$('pAutoDir').checked;
+  $('pExpUnit').value=p.expUnit??1000;
+  const fixedN=fixAllParams(); // 範囲外・選択肢外のパラメータを是正
+  pushUndo(); // 読込前の状態に戻せるようにする
+  const site=sanitizePts(d.site,3);
+  const obsIn=Array.isArray(d.obstacles)?d.obstacles:[];
+  const aiIn=Array.isArray(d.aisles)?d.aisles:[];
+  const obs=obsIn.map(o=>sanitizePts(o,3)).filter(Boolean);
+  const ais=aiIn.map(a=>{
+    const pts=a && sanitizePts(a.pts,2);
+    if (!pts) return null;
+    const w=+a.width;
+    return isFinite(w)&&w>0 ? {pts,width:w} : {pts};
+  }).filter(Boolean);
+  const dropped=(d.site&&!site?1:0)+(obsIn.length-obs.length)+(aiIn.length-ais.length);
+  state.site=site; state.obstacles=obs; state.aisles=ais;
+  state.sel=null;
+  fitView();
+  if (state.site) run(false); else { state.shown=null; state.result=null; updateWarnings(); draw(); }
+  return {fixedN, dropped};
+}
+$('btnSave').onclick=()=>{
+  download('parking_study.json',JSON.stringify(buildStudyJson(),null,1),'application/json');
+  dirty=false; // 保存済み＝離脱警告の対象外
+  setMsg('検討状態をJSONで保存しました');
 };
 $('btnLoad').onclick=()=>$('fileJson').click();
 $('fileJson').addEventListener('change',e=>{
@@ -1906,28 +2230,65 @@ $('fileJson').addEventListener('change',e=>{
   const r=new FileReader();
   r.onload=()=>{
     try{
-      const d=JSON.parse(r.result);
-      const p=d.params||{};
-      $('pW').value=p.stallW??2.5; $('pD').value=p.stallD??5.0;
-      $('pAngle').value=p.angle??90; $('pAisle').value=p.aisle??6.0;
-      $('pAisleM').value=p.aisleM??6.0;
-      $('pPerimeter').value=p.perimeter??((p.ring??true)?'ring':'none'); $('pGreen').value=p.green??1.0;
-      $('pAutoDir').checked=p.autoDir??true; $('pDir').value=p.dir??0; $('pDirSlider').value=p.dir??0;
-      $('pDir').disabled=$('pAutoDir').checked; $('pDirSlider').disabled=$('pAutoDir').checked;
-      $('pExpUnit').value=p.expUnit??1000;
-      state.site=d.site||null; state.obstacles=d.obstacles||[]; state.aisles=d.aisles||[];
-      updateCounts(); fitView(); run(false);
-      setMsg('検討状態を読み込みました（下図は再読込してください）');
+      const info=loadStudyJson(JSON.parse(r.result));
+      dirty=false; // ファイルと同一内容のため未保存扱いにしない
+      const notes=[];
+      if (info.dropped) notes.push(`不正な図形${info.dropped}件を除外`);
+      if (info.fixedN) notes.push(`範囲外のパラメータ${info.fixedN}件を修正`);
+      setMsg('検討状態を読み込みました（下図は再読込してください）'
+        +(notes.length?`／⚠ ${notes.join('・')}`:''));
     }catch(err){ setMsg('JSONの読み込みに失敗: '+err.message); }
   };
   r.readAsText(f);
   e.target.value='';
 });
 
+/* ---------- 自動保存・離脱警告 ---------- */
+const AUTOSAVE_KEY='parking-tool-autosave';
+let autosaveTimer=null, dirty=false;
+function hasShapes(){ return !!(state.site || state.obstacles.length || state.aisles.length); }
+// 連続変更をまとめるため2秒のデバウンスをかける
+function scheduleAutosave(){ clearTimeout(autosaveTimer); autosaveTimer=setTimeout(doAutosave,2000); }
+function markDirty(){ dirty=true; scheduleAutosave(); }
+function doAutosave(){
+  if (!hasShapes()) return; // 空データで上書きしない
+  const d=buildStudyJson();
+  d.savedAt=new Date().toISOString();
+  try{ localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(d)); }
+  catch(err){ /* プライベートモード等で localStorage が使えない場合は何もしない */ }
+  const b=$('btnRestore'); if (b) b.remove(); // 復元案内は古くなったので消す
+}
+// 起動時: 自動保存があれば復元ボタンを提示する（自動では復元しない）
+function offerRestore(){
+  let d=null;
+  try{
+    const raw=localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return;
+    d=JSON.parse(raw);
+  }catch(err){ return; }
+  if (!d || (!d.site && !(d.obstacles||[]).length && !(d.aisles||[]).length)) return;
+  const t=d.savedAt ? new Date(d.savedAt) : null;
+  const p2=n=>String(n).padStart(2,'0');
+  const when=(t && !isNaN(t)) ? `${t.getMonth()+1}月${t.getDate()}日 ${p2(t.getHours())}:${p2(t.getMinutes())}`
+                              : '前回';
+  setMsg(`前回の作業（${when}）を復元しますか？`);
+  const b=document.createElement('button');
+  b.id='btnRestore'; b.className='tbOp'; b.textContent='復元';
+  b.style.cssText='pointer-events:auto;margin-left:8px;padding:1px 8px;font-size:11px';
+  b.onclick=()=>{ b.remove(); loadStudyJson(d); dirty=true; };
+  $('msg').appendChild(b);
+}
+// 未保存の変更がある状態での離脱を警告（図形が空のときは警告しない）
+window.addEventListener('beforeunload',e=>{
+  if (!dirty || !hasShapes()) return;
+  e.preventDefault(); e.returnValue='';
+});
+
 /* ---------- init ---------- */
 window.addEventListener('resize',draw);
-updateCounts();
 setTool('site');
+updateUndoButtons();
+offerRestore(); // setTool のメッセージを上書きするため最後に実行
 </script>
 </body>
 </html>
