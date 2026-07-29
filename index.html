@@ -616,19 +616,35 @@ function evaluateA(siteW, obstaclesW, corridorsW, prm, thetaDeg, offset){
   const stallMargin = prm.green + perimeterDepth(prm);
   const usableStall = makeUsableTest(site, obstacles, corridors, stallMargin);
   const usableStrip = makeUsableTest(site, obstacles, [], prm.green); // 車路帯は手動車路と重なって良い
-  const bb = bbox(site), stalls = [], bands = [];
-  const accessDepth = A;
+  const bb = bbox(site), stalls = [], bands = [], fills = [];
+  // 斜め駐車では車室が平行四辺形になり、車路帯の矩形からはみ出す領域が生じる。
+  // ・出庫掃過（前面を車路方向へ押し出した平行四辺形）… 車路帯の端をはみ出す
+  // ・のこ歯状の隙間（隣り合う車室の前面／背面と帯縁の間の三角形）
+  // これらは実際には舗装（駐車モジュール全体が舗装）なので fills として保持し、
+  // 描画・面積集計で車路として扱う。cosA=0（90°）では退化するため作らない。
+  const skew = cosA > 1e-9;
   function tryRow(yAisle, up){
     let n=0, x0=Infinity, x1=-Infinity;
-    for (let x=bb.x0-pitch; x<=bb.x1+pitch; x+=pitch){
+    const uy = up ? sinA : -sinA; // 出庫方向 = 前面から車路側へ (-cosA, ±sinA)
+    let prev=null, prevK=-2, k=0;
+    for (let x=bb.x0-pitch; x<=bb.x1+pitch; x+=pitch, k++){
       const sp = stallPolyAt(x,yAisle,up,W,D,a);
       if (!usableStall(sp,false)) continue;
-      const strip = up
-        ? [{x,y:yAisle},{x:x+pitch,y:yAisle},{x:x+pitch,y:yAisle+accessDepth},{x,y:yAisle+accessDepth}]
-        : [{x,y:yAisle},{x:x+pitch,y:yAisle},{x:x+pitch,y:yAisle-accessDepth},{x,y:yAisle-accessDepth}];
+      // 出庫掃過。90°では従来の軸並行矩形と完全に一致する（cosA=0, pitch=W）
+      const strip = [sp[0], sp[1],
+        {x:sp[1].x-cosA*A, y:sp[1].y+uy*A},
+        {x:sp[0].x-cosA*A, y:sp[0].y+uy*A}];
       if (!usableStrip(strip,true)) continue;
       stalls.push(sp); n++;
       for (const p of sp){ x0=Math.min(x0,p.x); x1=Math.max(x1,p.x); }
+      if (skew){
+        fills.push(strip);
+        if (prev && k===prevK+1){
+          fills.push([prev[1], sp[0], sp[1]]);   // 前面側（車路側）の三角形
+          fills.push([prev[3], prev[2], sp[3]]); // 背面側の三角形
+        }
+      }
+      prev=sp; prevK=k;
     }
     return {n,x0,x1};
   }
@@ -641,7 +657,8 @@ function evaluateA(siteW, obstaclesW, corridorsW, prm, thetaDeg, offset){
         x0:Math.min(r1.x0,r2.x0), x1:Math.max(r1.x1,r2.x1)}); // 車路帯は最端車室で止める
   }
   return {count:stalls.length, theta:thetaDeg, offset,
-    stallsW:stalls.map(sp=>sp.map(p=>rot(p,c,th))), bands, frame:{c,th,bb}};
+    stallsW:stalls.map(sp=>sp.map(p=>rot(p,c,th))),
+    fillsW:fills.map(f=>f.map(p=>rot(p,c,th))), bands, frame:{c,th,bb}};
 }
 function generateA(siteW, obstaclesW, corridorsW, prm){
   const t0 = (typeof performance!=='undefined'?performance.now():Date.now());
@@ -924,6 +941,7 @@ function buildExportModel(site, obstacles, corridors, shown, prm, mode){
     greenChains:[], corridorChains:[], aisleLines:[], annotation:null};
   const isA = mode==='A' && !!shown.frame;
   const cuts = (isA && shown.cutsW) ? shown.cutsW : [];
+  const fills = (isA && shown.fillsW) ? shown.fillsW : []; // 斜め駐車のはみ出し（舗装）
   const bandRects=[];
   let clipPoly=null;
   if (isA){
@@ -934,7 +952,7 @@ function buildExportModel(site, obstacles, corridors, shown, prm, mode){
                       {x:b.x1,y:b.y1},{x:b.x0,y:b.y1}].map(p=>rot(p,c,th)));
   }
   const lineHoles=[...corridors, ...obstacles];          // 車路線から消し込む領域
-  const greenHoles=[...lineHoles, ...bandRects, ...cuts]; // 緑地外形線を切り欠く領域
+  const greenHoles=[...lineHoles, ...bandRects, ...cuts, ...fills]; // 緑地外形線を切り欠く領域
   // 外周緑化帯の内側ライン: 車路・障害物が横断する部分を切り欠く
   if (perimeterMode(prm)==='stall'){
     // 外周車室モード: 緑地は車室帯の余白まで連続するため、境界線は車室帯の内側
@@ -1204,6 +1222,8 @@ function draw(){
                  {x:b.x1,y:b.y1},{x:b.x0,y:b.y1}].map(p=>rot(p,c,th));
         pathPoly(r); ctx.fill();
       }
+      // 斜め駐車のはみ出し（出庫掃過・のこ歯状の隙間）も舗装として塗る
+      for (const f of state.shown.fillsW||[]){ pathPoly(f); ctx.fill(); }
       if (state.shown.cutsW) for (const tri of state.shown.cutsW){ pathPoly(tri); ctx.fill(); } // 隅切り
     }
     // 手動車路（緑化帯を視覚的に切り欠く: 後描き）
@@ -1507,6 +1527,8 @@ function computeAreas(prm,corridors){
   };
   const obsF=rasterize(state.obstacles), coF=rasterize(corridors), stallF=rasterize(stallPolys);
   const cutF=(shown&&shown.cutsW) ? rasterize(shown.cutsW) : null;
+  // 斜め駐車のはみ出し（出庫掃過・のこ歯状の隙間）。舗装なので車路として集計する
+  const fillF=(shown&&shown.fillsW&&shown.fillsW.length) ? rasterize(shown.fillsW) : null;
   // 分類コード: 0=敷地外 1=障害物 2=緑化帯 3=舗装(車路) 4=車室 5=余り
   const cls=new Uint8Array(nx*ny);
   const isStallMode=perimeterMode(prm)==='stall', pDepth=perimeterDepth(prm);
@@ -1534,6 +1556,7 @@ function computeAreas(prm,corridors){
       for (const b of bands){ if (qy>=b.y0&&qy<=b.y1&&qx>=b.x0&&qx<=b.x1){inBand=true;break;} }
       if (inBand){ cls[idx]=3; continue; }
       if (cutF && cutF[idx]){ cls[idx]=3; continue; } // 隅切りも車路扱い
+      if (fillF && fillF[idx]){ cls[idx]=3; continue; } // 斜め駐車のはみ出しも車路扱い
     }
     cls[idx]=5;
   }
